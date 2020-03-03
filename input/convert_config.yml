@@ -1,0 +1,10 @@
+target:
+  - "calendar"
+  - "sales_train_validation"
+  - "sample_submission"
+  - "sell_prices"
+
+extension: "csv"
+
+input_dir: "input/"
+output_dir: "input/"
