@@ -1,7 +1,7 @@
-import yaml
-
 from pathlib import Path
-from typing import Optional, Union, Dict, Any
+from typing import Any, Dict, Optional, Union
+
+import yaml
 
 
 def _get_default() -> dict:
@@ -12,6 +12,16 @@ def _get_default() -> dict:
     cfg["dataset"]["dir"] = "../input"
     cfg["dataset"]["feature_dir"] = "../features"
     cfg["dataset"]["params"] = dict()
+
+    # feature enginnering
+    cfg["feature_engineering"] = dict()
+    cfg["feature_engineering"]["sampling"] = dict()
+    cfg["feature_engineering"]["sampling"]["make"] = dict()
+    cfg["feature_engineering"]["sampling"]["make"]["params"] = dict()
+    cfg["feature_engineering"]["sampling"]["save"] = dict()
+    cfg["feature_engineering"]["sampling"]["save"]["params"] = dict()
+    cfg["feature_engineering"]["sampling"]["train"] = dict()
+    cfg["feature_engineering"]["sampling"]["train"]["params"] = dict()
 
     # adversarial validation
     cfg["av"] = dict()

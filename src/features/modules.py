@@ -93,8 +93,12 @@ class DiffGroupbyTransformer(GroupbyTransformer):
             key, var, agg, on = self._get_params(param_dict)
             for a in agg:
                 for v in var:
-                    new_feature = '_'.join(['diff', a, v, 'groupby'] + key)
-                    base_feature = '_'.join([a, v, 'groupby'] + key)
+                    if not isinstance(a, str):
+                        new_feature = '_'.join(['diff', a.__name__, v, 'groupby'] + key)
+                        base_feature = '_'.join([a.__name__, v, 'groupby'] + key)
+                    else:
+                        new_feature = '_'.join(['diff', a, v, 'groupby'] + key)
+                        base_feature = '_'.join([a, v, 'groupby'] + key)
                     dataframe[
                         new_feature] = dataframe[base_feature] - dataframe[v]
         return dataframe
@@ -124,8 +128,12 @@ class RatioGroupbyTransformer(GroupbyTransformer):
             key, var, agg, on = self._get_params(param_dict)
             for a in agg:
                 for v in var:
-                    new_feature = '_'.join(['ratio', a, v, 'groupby'] + key)
-                    base_feature = '_'.join([a, v, 'groupby'] + key)
+                    if not isinstance(a, str):
+                        new_feature = '_'.join(['ratio', a.__name__, v, 'groupby'] + key)
+                        base_feature = '_'.join([a.__name__, v, 'groupby'] + key)
+                    else:
+                        new_feature = '_'.join(['ratio', a, v, 'groupby'] + key)
+                        base_feature = '_'.join([a, v, 'groupby'] + key)
                     dataframe[
                         new_feature] = dataframe[v] / dataframe[base_feature]
         return dataframe

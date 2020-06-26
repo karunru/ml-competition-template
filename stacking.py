@@ -45,7 +45,6 @@ if __name__ == "__main__":
         SpectrumPeaks50Pct,
         SpectrumKShape,
         Params,
-        Tsfresh,
         generate_features,
         load_features,
     )
@@ -127,6 +126,34 @@ if __name__ == "__main__":
     with timer("delete duplicated columns"):
         x_train = delete_duplicated_columns(x_train)
         x_test = delete_duplicated_columns(x_test)
+
+    with timer("add predict"):
+        x_train["nn1"] = np.load("output/notebook/oof_preds.npy")[list(x_train.index)]
+        x_test["nn1"] = np.load("output/notebook/test_preds.npy")
+
+        x_train["nn2"] = np.load("output/notebook/oof_preds2.npy")
+        x_test["nn2"] = np.load("output/notebook/test_preds2.npy")
+
+        x_train["nn3"] = np.load("output/notebook/oof_preds3.npy")
+        x_test["nn3"] = np.load("output/notebook/test_preds3.npy")
+
+        x_train["rgf"] = np.load("output/26_rfg_classifer/oof_preds.npy")
+        x_test["rgf"] = np.load("output/26_rfg_classifer/test_preds.npy")
+
+        x_train["ert1"] = np.load("output/25_ert_classifer/oof_preds.npy")
+        x_test["ert1"] = np.load("output/25_ert_classifer/test_preds.npy")
+
+        x_train["ert2"] = np.load("output/32_ert_tsfresh/oof_preds.npy")
+        x_test["ert2"] = np.load("output/32_ert_tsfresh/test_preds.npy")
+
+        x_train["lgbm1"] = np.load("output/23_add_params_feats/oof_preds.npy")
+        x_test["lgbm1"] = np.load("output/23_add_params_feats/test_preds.npy")
+
+        x_train["lgbm2"] = np.load("output/31_add_tsfresh_feats/oof_preds.npy")
+        x_test["lgbm2"] = np.load("output/31_add_tsfresh_feats/test_preds.npy")
+
+        x_train["cat"] = np.load("output/21_catboost/oof_preds.npy")
+        x_test["cat"] = np.load("output/21_catboost/test_preds.npy")
 
     with timer("make target and remove cols"):
         y_train = x_train["target"].values.reshape(-1)

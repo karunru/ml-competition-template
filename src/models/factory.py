@@ -1,7 +1,24 @@
-from .cat import CatBoostModel
+from .cat import CatBoost
+from .lightgbm import LightGBM
+from .ert import ExtremelyRandomizedTrees
+from .rgf import RegularizedGreedyForest
 
-def catboost() -> CatBoostModel:
-    return CatBoostModel()
+
+def lgbm() -> LightGBM:
+    return LightGBM()
+
+
+def catboost() -> CatBoost:
+    return CatBoost()
+
+
+def ert() -> ExtremelyRandomizedTrees:
+    return ExtremelyRandomizedTrees()
+
+
+def rgf() -> RegularizedGreedyForest:
+    return RegularizedGreedyForest()
+
 
 def get_model(config: dict):
     model_name = config["model"]["name"]

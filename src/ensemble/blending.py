@@ -1,20 +1,21 @@
-import numpy as np
+from typing import Callable, List
 
-from typing import List, Callable
+import numpy as np
 
 from src.utils import seed_everything
 
 
 def rmse(a: np.ndarray, b: np.ndarray) -> float:
-    return np.sqrt(((a - b)**2).mean())
+    return np.sqrt(((a - b) ** 2).mean())
 
 
 def search_blending_weight(
-        predictions: List[np.ndarray],
-        target: np.ndarray,
-        n_iter: int,
-        func: Callable[[np.ndarray, np.ndarray], float] = rmse,
-        is_higher_better: bool = False) -> np.ndarray:
+    predictions: List[np.ndarray],
+    target: np.ndarray,
+    n_iter: int,
+    func: Callable[[np.ndarray, np.ndarray], float] = rmse,
+    is_higher_better: bool = False,
+) -> np.ndarray:
     best_weights = np.zeros(len(predictions))
     best_score = -np.inf if is_higher_better else np.inf
 

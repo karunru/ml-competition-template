@@ -1,0 +1,79 @@
+dataset:
+  dir: "input/m5-forecasting-accuracy/"
+  feature_dir: "features"
+  params:
+
+features:
+  - Basic
+  - Calendar
+  - LabelEncoding
+  - LastNonZeroSales
+#  - LogSalesShiftRolling
+  - SalesShift
+#  - SalesShiftRolling
+  - SalesShiftDowRolling
+
+feature_engineering:
+  sampling:
+    make:
+      shrink_by_release: False
+      params:
+        year: 2014
+        month: 2
+        day: 20
+    save:
+      shrink_by_release: True
+      params:
+        year: 2015
+        month: 4
+        day: 27
+    train:
+      shrink_by_release: True
+      params:
+        year: 2015
+        month: 4
+        day: 27
+
+model:
+  name: "lgbm"
+  mode: "regression"
+  model_params:
+    device_type: "gpu"
+    gpu_platform_id: 0
+    gpu_device_id: 0
+    objective: "regression"
+    metric: "rmse"
+    boosting: "gbdt"
+    max_depth: -1
+    num_leaves: 2561
+    tree_learner: "serial"
+    learning_rate: 0.05
+    bagging_fraction: 0.8
+    bagging_freq: 10
+    feature_fraction: 0.8
+    max_bin: 255
+    seed: 71
+    bagging_seed: 71
+    feature_fraction_seed: 71
+    drop_seed: 71
+    verbose: 0
+    num_threads: 8
+    first_metric_only: True
+
+  train_params:
+    num_boost_round: 10000
+    early_stopping_rounds: 30
+    verbose_eval: 10
+
+
+val:
+  name: "validation_refinement_by_day_of_week"
+  params:
+    date_col: "date"
+    n_split: 1
+    train_days: 365
+    valid_days: 28
+    slide_step_days: 28
+    pred_day: None
+
+output_dir: "output"

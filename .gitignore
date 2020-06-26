@@ -109,8 +109,12 @@ venv.bak/
 *.ftr
 *.pkl
 *.npy
+*.dat
+*.h5
 catboost_info/
+notebooks/each_ids_time_series_images/
 *.pth
 
 # editor
 .vscode
+.idea
