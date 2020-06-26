@@ -8,7 +8,7 @@ mkdir output
 mkdir log
 
 # template
-cp -r ../ml-competition-template/config/example config/
+cp -r ../ml-competition-template/config/examples config/
 cp -r ../ml-competition-template/input/* input/
 cp -r ../ml-competition-template/src ./
 cp ../ml-competition-template/.dockerignore .dockerignore
