@@ -18,15 +18,10 @@ if __name__ == "__main__":
     input_dir = config["input_dir"]
     output_dir = config["output_dir"]
 
-    use_float16 = True
-    if output_extension == "ftr":
-        use_float16 = False
-
     for t in target:
         print("convert ", t)
         (
             tools.reduce_mem_usage(
-                pd.read_csv(input_dir + t + "." + input_extension, encoding="utf-8"),
-                use_float16=use_float16,
+                pd.read_csv(input_dir + t + "." + input_extension, encoding="utf-8")
             )
-        ).to_feather(output_dir + t + "." + output_extension)
+        ).to_pickle(output_dir + t + "." + output_extension)
