@@ -1,5 +1,5 @@
 FROM nvidia/cuda:10.1-cudnn7-devel-ubuntu18.04
-MAINTAINER nejumi <dr_jingles@mac.com>
+MAINTAINER karunru <1qazhikaru@gmail.com>
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
@@ -36,6 +36,30 @@ RUN apt update && \
 # Add OpenCL ICD files for LightGBM
 RUN mkdir -p /etc/OpenCL/vendors && \
 echo "libnvidia-opencl.so.1" > /etc/OpenCL/vendors/nvidia.icd
+
+
+##############################################################################
+# fish and fisher
+##############################################################################
+
+# Install fish
+RUN add-apt-repository ppa:fish-shell/release-3 && \
+    apt-get update && \
+    apt-get install fish
+
+
+##############################################################################
+# rcm and dotfiles
+##############################################################################
+
+# Install rcm
+RUN sudo add-apt-repository ppa:martin-frost/thoughtbot-rcm && \
+    sudo apt-get update && \
+    sudo apt-get install rcm
+
+RUN git clone https://290da70d9f74a64809d07f66b9110ca7f5126ff5:x-oauth-basic@github.com/karunru/dotfiles.git
+RUN env RCRC=~/dotfiles/rcrc rcup -v -d ~/dotfiles
+
 
 ##############################################################################
 # TINI
