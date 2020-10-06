@@ -114,3 +114,4 @@ catboost_info/
 
 # editor
 .vscode
+.idea

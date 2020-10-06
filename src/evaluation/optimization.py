@@ -1,8 +1,8 @@
+from functools import partial
+
 import numpy as np
 import pandas as pd
 import scipy as sp
-
-from functools import partial
 
 from src.evaluation import calc_metric
 
@@ -14,14 +14,13 @@ class GroupWiseOptimizer(object):
 
     def fit(self, X: np.ndarray, y: np.ndarray, group: np.ndarray):
         self.rounders = {
-            gp: OptimizedRounder(
-                n_overall=self.n_overall, n_classwise=self.n_classwise)
+            gp: OptimizedRounder(n_overall=self.n_overall, n_classwise=self.n_classwise)
             for gp in np.unique(group)
         }
         for gp in self.rounders.keys():
             X_gp = X[group == gp]
             y_gp = y[group == gp]
-            self.rounders[gp].fit(X_gp, y_gp,,
+            self.rounders[gp].fit(X_gp, y_gp)
 
     def predict(self, X: np.ndarray, group: np.ndarray) -> np.ndarray:
         result = np.zeros_like(X)
@@ -32,10 +31,7 @@ class GroupWiseOptimizer(object):
 
 
 class OptimizedRounder(object):
-    def __init__(self,
-                 n_overall: int = 5,
-                 n_classwise: int = 5,
-                 reverse: bool = False):
+    def __init__(self, n_overall: int = 5, n_classwise: int = 5, reverse: bool = False):
         self.n_overall = n_overall
         self.n_classwise = n_classwise
         self.coef = [0.25, 0.5, 0.75]
@@ -84,8 +80,7 @@ class OptimizedRounderNotScaled(object):
         self.coef_ = 0
 
     def _kappa_loss(self, coef, X, y):
-        X_p = pd.cut(
-            X, [-np.inf] + list(np.sort(coef)) + [np.inf], labels=[0, 1, 2, 3])
+        X_p = pd.cut(X, [-np.inf] + list(np.sort(coef)) + [np.inf], labels=[0, 1, 2, 3])
 
         return -calc_metric(y, X_p)
 
@@ -93,11 +88,13 @@ class OptimizedRounderNotScaled(object):
         loss_partial = partial(self._kappa_loss, X=X, y=y)
         initial_coef = [0.5, 1.5, 2.5]
         self.coef_ = sp.optimize.minimize(
-            loss_partial, initial_coef, method='nelder-mead')
+            loss_partial, initial_coef, method="nelder-mead"
+        )
 
     def predict(self, X, coef):
         return pd.cut(
-            X, [-np.inf] + list(np.sort(coef)) + [np.inf], labels=[0, 1, 2, 3])
+            X, [-np.inf] + list(np.sort(coef)) + [np.inf], labels=[0, 1, 2, 3]
+        )
 
     def coefficients(self):
-        return self.coef_['x']
+        return self.coef_["x"]

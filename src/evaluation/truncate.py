@@ -7,10 +7,8 @@ from .metrics import calc_metric
 
 
 def eval_with_truncated_data(
-        y_pred: np.ndarray,
-        y_true: np.ndarray,
-        groups: np.ndarray,
-        n_trials: int = 10) -> Dict[str, Union[List[float], float]]:
+    y_pred: np.ndarray, y_true: np.ndarray, groups: np.ndarray, n_trials: int = 10
+) -> Dict[str, Union[List[float], float]]:
     eval_result: Dict[str, Union[List[float], float]] = {}
     trials: List[float] = []
 
@@ -38,11 +36,12 @@ def eval_with_truncated_data(
 
 
 def truncated_cv_with_adjustment_of_distribution(
-        y_pred: np.ndarray,
-        y_true: np.ndarray,
-        groups: np.ndarray,
-        test_groups: np.ndarray,
-        n_trials: int = 100) -> Dict[str, Union[List[float], float]]:
+    y_pred: np.ndarray,
+    y_true: np.ndarray,
+    groups: np.ndarray,
+    test_groups: np.ndarray,
+    n_trials: int = 100,
+) -> Dict[str, Union[List[float], float]]:
 
     eval_result: Dict[str, Union[List[float], float]] = {}
     trials: List[float] = []
@@ -83,8 +82,7 @@ def truncated_cv_with_adjustment_of_distribution(
     first_assess_dice = []
     used_groups_list = []
     for i in range(n_trials):
-        dice = np.random.choice(
-            first_assess_idx, size=n_first_assess, replace=False)
+        dice = np.random.choice(first_assess_idx, size=n_first_assess, replace=False)
         first_assess_dice.append(dice)
         used_groups = set(map(lambda x: idx_groups_map[x], dice))
         used_groups_list.append(used_groups)
@@ -98,8 +96,7 @@ def truncated_cv_with_adjustment_of_distribution(
         available_groups = set(groups_has_more_than_two) - used_groups
         for group in available_groups:
             second_assess_idx.append(groups_idx_map[group][1])
-        dice = np.random.choice(
-            second_assess_idx, size=n_second_assess, replace=False)
+        dice = np.random.choice(second_assess_idx, size=n_second_assess, replace=False)
         second_assess_dice.append(dice)
         used_groups_second = set(map(lambda x: idx_groups_map[x], dice))
         used_groups_list[i] = used_groups.union(used_groups_second)
@@ -113,8 +110,7 @@ def truncated_cv_with_adjustment_of_distribution(
         available_groups = set(groups_has_more_than_three) - used_groups
         for group in available_groups:
             third_assess_idx.append(groups_idx_map[group][2])
-        dice = np.random.choice(
-            third_assess_idx, size=n_third_assess, replace=False)
+        dice = np.random.choice(third_assess_idx, size=n_third_assess, replace=False)
         third_assess_dice.append(dice)
         used_groups_third = set(map(lambda x: idx_groups_map[x], dice))
         used_groups_list[i] = used_groups.union(used_groups_third)
@@ -127,8 +123,7 @@ def truncated_cv_with_adjustment_of_distribution(
         available_groups = set(groups_has_more_than_four) - used_groups
         for group in available_groups:
             fourth_assess_idx.append(groups_idx_map[group][3])
-        dice = np.random.choice(
-            fourth_assess_idx, size=n_fourth_assess, replace=False)
+        dice = np.random.choice(fourth_assess_idx, size=n_fourth_assess, replace=False)
         fourth_asses_dice.append(dice)
         used_groups_fourth = set(map(lambda x: idx_groups_map[x], dice))
         used_groups_list[i] = used_groups.union(used_groups_fourth)
@@ -143,15 +138,15 @@ def truncated_cv_with_adjustment_of_distribution(
         for group in available_groups:
             over_fifth_assess_idx.extend(groups_idx_map[group][4:])
         dice = np.random.choice(
-            over_fifth_assess_idx, size=n_over_five_assess, replace=False)
+            over_fifth_assess_idx, size=n_over_five_assess, replace=False
+        )
         over_fifth_assess_dice.append(dice)
 
     over_fifth_assess = np.asarray(over_fifth_assess_dice).T
 
-    assess = np.vstack([
-        first_assess, second_assess, third_assess, fourth_assess,
-        over_fifth_assess
-    ])
+    assess = np.vstack(
+        [first_assess, second_assess, third_assess, fourth_assess, over_fifth_assess]
+    )
 
     for i in range(n_trials):
         y_pred_choice = y_pred[assess[:, i]]

@@ -1,16 +1,29 @@
-import numpy as np
-
 from typing import Union
 
+import numpy as np
+from sklearn.metrics import average_precision_score, mean_squared_error
 
-def qwk(y_true: Union[np.ndarray, list],
-        y_pred: Union[np.ndarray, list],
-        max_rat: int = 3) -> float:
+
+def pr_auc(y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]) -> float:
+    return average_precision_score(y_true, y_pred)
+
+
+def rmse(y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]) -> float:
+    return np.sqrt(mean_squared_error(y_true, y_pred))
+
+
+def rmsle(y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]) -> float:
+    return rmse(np.log1p(y_true), np.log1p(y_pred))
+
+
+def qwk(
+    y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list], max_rat: int = 3
+) -> float:
     y_true_ = np.asarray(y_true)
     y_pred_ = np.asarray(y_pred)
 
-    hist1 = np.zeros((max_rat + 1, ))
-    hist2 = np.zeros((max_rat + 1, ))
+    hist1 = np.zeros((max_rat + 1,))
+    hist2 = np.zeros((max_rat + 1,))
 
     uniq_class = np.unique(y_true_)
     for i in uniq_class:
@@ -28,8 +41,9 @@ def qwk(y_true: Union[np.ndarray, list],
     return 1 - numerator / denominator
 
 
-def calc_metric(y_true: Union[np.ndarray, list],
-                y_pred: Union[np.ndarray, list]) -> float:
+def calc_metric(
+    y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]
+) -> float:
     return qwk(y_true, y_pred)
 
 

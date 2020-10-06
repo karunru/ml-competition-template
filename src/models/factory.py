@@ -1,7 +1,39 @@
-from .cat import CatBoostModel
+from .cat import CatBoost
+from .ert import ExtremelyRandomizedTrees
+from .ktb import KTBoost
+from .lightgbm import LightGBM
+from .rgf import RegularizedGreedyForest
+from .xgb import XGBoost
+from .tabnet import TabNet
 
-def catboost() -> CatBoostModel:
-    return CatBoostModel()
+
+def lgbm() -> LightGBM:
+    return LightGBM()
+
+
+def catboost() -> CatBoost:
+    return CatBoost()
+
+
+def ert() -> ExtremelyRandomizedTrees:
+    return ExtremelyRandomizedTrees()
+
+
+def rgf() -> RegularizedGreedyForest:
+    return RegularizedGreedyForest()
+
+
+def xgb() -> XGBoost:
+    return XGBoost()
+
+
+def ktb() -> KTBoost:
+    return KTBoost()
+
+
+def tabnet() -> TabNet:
+    return TabNet()
+
 
 def get_model(config: dict):
     model_name = config["model"]["name"]

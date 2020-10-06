@@ -1,40 +1,73 @@
+from typing import Optional, Tuple, Union
+
 import numpy as np
 import pandas as pd
-
-from typing import Tuple, Union
-
 from catboost import CatBoostClassifier, CatBoostRegressor
+
+from xfeat.types import XDataFrame, XSeries
 
 from .base import BaseModel
 
 CatModel = Union[CatBoostClassifier, CatBoostRegressor]
+AoD = Union[np.ndarray, XDataFrame]
+AoS = Union[np.ndarray, XSeries]
 
 
 class CatBoost(BaseModel):
-    def fit(self, x_train: np.ndarray, y_train: np.ndarray, x_valid: np.ndarray, y_valid: np.ndarray, config: dict,
-            **kwargs) -> Tuple[CatModel, dict]:
+    def fit(
+        self,
+        x_train: AoD,
+        y_train: AoS,
+        x_valid: AoD,
+        y_valid: AoS,
+        config: dict,
+        **kwargs
+    ) -> Tuple[CatModel, dict]:
         model_params = config["model"]["model_params"]
         mode = config["model"]["train_params"]["mode"]
+        categorical_cols = x_train.select_dtypes(include="category").columns
+
         if mode == "regression":
+            # model = CatBoostRegressor(cat_features=categorical_cols, **model_params)
             model = CatBoostRegressor(**model_params)
         else:
+            # model = CatBoostClassifier(cat_features=categorical_cols, **model_params)
             model = CatBoostClassifier(**model_params)
 
         model.fit(
-            x_train,
+            x_train.values,
             y_train,
-            eval_set=(x_valid, y_valid),
-            use_best_model=True,
-            verbose=model_params["early_stopping_rounds"])
+            eval_set=(x_valid.values, y_valid),
+            verbose=model_params["early_stopping_rounds"],
+        )
         best_score = model.best_score_
         return model, best_score
 
-    def get_best_iteration(self, model: CatModel):
+    # def post_process(
+    #     self,
+    #     oof_preds: np.ndarray,
+    #     test_preds: np.ndarray,
+    #     valid_preds: Optional[np.ndarray],
+    #     y_train: np.ndarray,
+    #     y_valid: Optional[np.ndarray],
+    #     train_features: Optional[pd.DataFrame],
+    #     test_features: Optional[pd.DataFrame],
+    #     valid_features: Optional[pd.DataFrame],
+    #     config: dict,
+    # ) -> Tuple[
+    #     np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
+    # ]:
+    #     # Override
+    #     return y_train, oof_preds, test_preds, y_valid, valid_preds
+
+    def get_best_iteration(self, model: CatModel) -> int:
         return model.best_iteration_
 
-    def predict(self, model: CatModel,
-                features: Union[pd.DataFrame, np.ndarray]) -> np.ndarray:
-        return model.predict(features)
+    def predict(
+        self, model: CatModel, features: Union[pd.DataFrame, np.ndarray]
+    ) -> np.ndarray:
+        # if model.get_param("loss_function")
+        return model.predict(features.values)
 
     def get_feature_importance(self, model: CatModel) -> np.ndarray:
         return model.feature_importances_

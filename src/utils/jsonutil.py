@@ -1,11 +1,9 @@
 import codecs
 import json
-
-import numpy as np
-
+from pathlib import Path
 from typing import Union
 
-from pathlib import Path
+import numpy as np
 
 
 class MyEncoder(json.JSONEncoder):

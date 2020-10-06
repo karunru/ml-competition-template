@@ -138,6 +138,13 @@ if __name__ == "__main__":
         x_train = delete_duplicated_columns(x_train)
         x_test = delete_duplicated_columns(x_test)
 
+    with timer("load predictions"):
+        org_cols = x_train.columns.to_list()
+        preds = config["stacking"]["predictions"]
+        for pred in preds:
+            x_train[pred] = np.load("output/" + pred + "/oof_preds.npy")
+            x_test[pred] = np.load("output/" + pred + "/test_preds.npy")
+
     with timer("make target and remove cols"):
         y_train = x_train["target"].values.reshape(-1)
 
@@ -164,6 +171,8 @@ if __name__ == "__main__":
                 "target_LandShape_mean",
                 "target_CityPlanning_mean",
             ]
+            if not config["stacking"]["use_org_cols"]:
+                remove_cols += org_cols
             cols = [col for col in cols if col not in remove_cols]
             x_train, x_test = x_train[cols], x_test[cols]
 

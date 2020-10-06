@@ -7,10 +7,7 @@ from .optimization import OptimizedRounder, OptimizedRounderNotScaled
 
 
 class CatBoostMulticlassOptimizedQWK(object):
-    def __init__(self,
-                 n_overall: int = 5,
-                 n_classwise: int = 5,
-                 reverse: bool = False):
+    def __init__(self, n_overall: int = 5, n_classwise: int = 5, reverse: bool = False):
         self.n_overall = n_overall
         self.n_classwise = n_classwise
         self.reverse = reverse
@@ -21,8 +18,9 @@ class CatBoostMulticlassOptimizedQWK(object):
     def is_max_optimal(self):
         return True
 
-    def evaluate(self, approxes, target,
-                 weight: Optional[Sequence[float]]) -> Tuple[float, float]:
+    def evaluate(
+        self, approxes, target, weight: Optional[Sequence[float]]
+    ) -> Tuple[float, float]:
         approx_np = np.array(approxes)
         target_np = np.array(target)
 
@@ -31,9 +29,8 @@ class CatBoostMulticlassOptimizedQWK(object):
         y_pred = np.arange(4) @ softmax / 3
 
         OptR = OptimizedRounder(
-            n_classwise=self.n_classwise,
-            n_overall=self.n_overall,
-            reverse=self.reverse)
+            n_classwise=self.n_classwise, n_overall=self.n_overall, reverse=self.reverse
+        )
         OptR.fit(y_pred, target_np)
 
         y_pred = OptR.predict(y_pred).astype(int)
@@ -45,10 +42,7 @@ class CatBoostMulticlassOptimizedQWK(object):
 
 
 class CatBoostOptimizedQWKMetric(object):
-    def __init__(self,
-                 n_overall: int = 5,
-                 n_classwise: int = 5,
-                 reverse: bool = False):
+    def __init__(self, n_overall: int = 5, n_classwise: int = 5, reverse: bool = False):
         self.n_overall = n_overall
         self.n_classwise = n_classwise
         self.reverse = reverse
@@ -59,8 +53,9 @@ class CatBoostOptimizedQWKMetric(object):
     def is_max_optimal(self):
         return True
 
-    def evaluate(self, approxes, target,
-                 weight: Optional[Sequence[float]]) -> Tuple[float, float]:
+    def evaluate(
+        self, approxes, target, weight: Optional[Sequence[float]]
+    ) -> Tuple[float, float]:
         assert len(approxes) == 1
         assert len(target) == len(approxes[0])
 
@@ -69,9 +64,8 @@ class CatBoostOptimizedQWKMetric(object):
         target_np = (np.array(target) * 3).astype(int)
 
         OptR = OptimizedRounder(
-            n_classwise=self.n_classwise,
-            n_overall=self.n_overall,
-            reverse=self.reverse)
+            n_classwise=self.n_classwise, n_overall=self.n_overall, reverse=self.reverse
+        )
         OptR.fit(approx_np, target_np)
 
         y_pred = OptR.predict(approx_np).astype(int)
@@ -89,8 +83,9 @@ class CatBoostOptimizedNotScaled(object):
     def is_max_optimal(self):
         return True
 
-    def evaluate(self, approxes, target,
-                 weight: Optional[Sequence[float]]) -> Tuple[float, float]:
+    def evaluate(
+        self, approxes, target, weight: Optional[Sequence[float]]
+    ) -> Tuple[float, float]:
         assert len(approxes) == 1
         assert len(target) == len(approxes[0])
 
