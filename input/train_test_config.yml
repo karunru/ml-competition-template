@@ -1,0 +1,4 @@
+extension: "pkl"
+
+input_dir: "input/atma-cup5/"
+output_dir: "input/atma-cup5/"

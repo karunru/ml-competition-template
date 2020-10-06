@@ -43,23 +43,6 @@ class CatBoost(BaseModel):
         best_score = model.best_score_
         return model, best_score
 
-    # def post_process(
-    #     self,
-    #     oof_preds: np.ndarray,
-    #     test_preds: np.ndarray,
-    #     valid_preds: Optional[np.ndarray],
-    #     y_train: np.ndarray,
-    #     y_valid: Optional[np.ndarray],
-    #     train_features: Optional[pd.DataFrame],
-    #     test_features: Optional[pd.DataFrame],
-    #     valid_features: Optional[pd.DataFrame],
-    #     config: dict,
-    # ) -> Tuple[
-    #     np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
-    # ]:
-    #     # Override
-    #     return y_train, oof_preds, test_preds, y_valid, valid_preds
-
     def get_best_iteration(self, model: CatModel) -> int:
         return model.best_iteration_
 

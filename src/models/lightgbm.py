@@ -139,23 +139,6 @@ class LightGBM(BaseModel):
     def get_feature_importance(self, model: LGBMModel) -> np.ndarray:
         return model.feature_importance(importance_type="gain")
 
-    # def post_process(
-    #     self,
-    #     oof_preds: np.ndarray,
-    #     test_preds: np.ndarray,
-    #     valid_preds: Optional[np.ndarray],
-    #     y_train: np.ndarray,
-    #     y_valid: Optional[np.ndarray],
-    #     train_features: Optional[pd.DataFrame],
-    #     test_features: Optional[pd.DataFrame],
-    #     valid_features: Optional[pd.DataFrame],
-    #     config: dict,
-    # ) -> Tuple[
-    #     np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
-    # ]:
-    #     # Override
-    #     return y_train, oof_preds, test_preds, y_valid, valid_preds
-
 
 def log_evaluation_callback(period=1, show_stdv=True):
     def _callback(env):

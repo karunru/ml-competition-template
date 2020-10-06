@@ -8,10 +8,9 @@ from typing import Optional, Tuple, Union
 import pandas as pd
 
 import cudf
-from xfeat.types import XDataFrame
-
 from src.sampling import shrink_by_date_index
 from src.utils import load_pickle, reduce_mem_usage, save_pickle, timer
+from xfeat.types import XDataFrame
 
 
 class Feature(metaclass=abc.ABCMeta):

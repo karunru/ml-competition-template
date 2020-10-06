@@ -1,80 +1,140 @@
-FROM ubuntu:18.04
-ENV LC_ALL=C.UTF-8
+FROM nvidia/cuda:10.1-cudnn7-devel-ubuntu18.04
+MAINTAINER karunru <1qazhikaru@gmail.com>
 
-# Install this
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gnupg2 curl ca-certificates
-
-# Install some basic utilities
-RUN . /etc/os-release; \
-    printf "deb http://ppa.launchpad.net/jonathonf/vim/ubuntu %s main" "$UBUNTU_CODENAME" main | tee /etc/apt/sources.list.d/vim-ppa.list && \
-    apt-key  adv --keyserver hkps://keyserver.ubuntu.com --recv-key 4AB0F789CBA31744CC7DA76A8CF63AD3F06FC659 && \
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:git-core/ppa && \
     apt-get update && \
-    env DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade --autoremove --purge --no-install-recommends -y \
-    build-essential \
+    apt-get install -y git build-essential cmake && \
+    git --version
+
+RUN apt-get update && \
+    apt-get install -y \
+    curl \
+    wget \
     bzip2 \
     ca-certificates \
-    curl \
+    libglib2.0-0 \
+    libxext6 \
+    libsm6 \
+    libxrender1 \
     git \
-    libcanberra-gtk-module \
-    libgtk2.0-0 \
-    libx11-6 \
-    sudo \
-    graphviz \
-    vim-nox
+    vim \
+    mercurial \
+    subversion \
+    cmake \
+    libboost-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \
+    gcc \
+    g++
 
-# Create a working directory
-RUN mkdir /app
-WORKDIR /app
+RUN apt update && \
+    apt install unzip
 
-# Create a non-root user and switch to it
-RUN adduser --disabled-password --gecos '' --shell /bin/bash user \
-    && chown -R user:user /app
-RUN echo "user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-user
-USER user
+# Add OpenCL ICD files for LightGBM
+RUN mkdir -p /etc/OpenCL/vendors && \
+echo "libnvidia-opencl.so.1" > /etc/OpenCL/vendors/nvidia.icd
 
-# All users can use /home/user as their home directory
-ENV HOME=/home/user
-RUN chmod 777 /home/user
 
-# Install Miniconda
-RUN curl -so ~/miniconda.sh https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh \
-    && bash ~/miniconda.sh -b -p ~/miniconda \
-    && rm ~/miniconda.sh
-ENV PATH=/home/user/miniconda/bin:$PATH
-ENV CONDA_AUTO_UPDATE_CONDA=false
+##############################################################################
+# fish and fisher
+##############################################################################
 
-# Create a Python 3.6 environment
-RUN /home/user/miniconda/bin/conda update -n base -c defaults conda -y && \
-    /home/user/miniconda/bin/conda install conda-build -y \
-    && /home/user/miniconda/bin/conda create -y --name py36 python=3.6.6 \
-    && /home/user/miniconda/bin/conda clean -ya
-ENV CONDA_DEFAULT_ENV=py36
-ENV CONDA_PREFIX=/home/user/miniconda/envs/$CONDA_DEFAULT_ENV
-ENV PATH=$CONDA_PREFIX/bin:$PATH
+# Install fish
+RUN add-apt-repository ppa:fish-shell/release-3 && \
+    apt-get update && \
+    apt-get install fish
 
-# nodejs for jupyterlab
-RUN conda install nodejs tini -y && \
-    conda clean -a -y
 
-COPY requirements.txt /app/.
-COPY --chown=user:user .jupyter /home/user/.jupyter
+##############################################################################
+# rcm and dotfiles
+##############################################################################
 
-# Install OpenCV, Jupyter Lab
-RUN pip install --no-cache-dir -r requirements.txt
-RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager -y --clean && \
-    jupyter labextension install @jupyterlab/toc -y --clean && \
-    jupyter labextension install jupyter-matplotlib -y --clean && \
-    jlpm cache clean
+# Install rcm
+RUN sudo add-apt-repository ppa:martin-frost/thoughtbot-rcm && \
+    sudo apt-get update && \
+    sudo apt-get install rcm
 
-COPY docker/. /app/.
-RUN make -C /app adduser && \
-    sudo chown root:root /app/adduser && \
-    sudo chmod u+s /app/adduser && \
-    sudo mv adduser /usr/local/bin/adduser2 && \
-    rm /app/adduser.cpp && \
-    sudo chmod +x /app/start.sh
+RUN git clone https://290da70d9f74a64809d07f66b9110ca7f5126ff5:x-oauth-basic@github.com/karunru/dotfiles.git
+RUN env RCRC=~/dotfiles/rcrc rcup -v -d ~/dotfiles
 
-ENTRYPOINT ["/app/start.sh"]
-CMD ["jupyter", "lab"]
-ENV SHELL=/bin/bash
+
+##############################################################################
+# TINI
+##############################################################################
+
+# Install tini
+ENV TINI_VERSION v0.14.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
+RUN chmod +x /tini
+           
+##############################################################################
+# Miniconda python
+##############################################################################
+RUN apt-get update && \
+    apt-get install -y wget bzip2 ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-py37_4.8.3-Linux-x86_64.sh && \
+    /bin/bash Miniconda3-py37_4.8.3-Linux-x86_64.sh -b -p /opt/conda && \
+    rm Miniconda3-py37_4.8.3-Linux-x86_64.sh
+
+ENV PATH /opt/conda/bin:$PATH
+RUN pip install --upgrade pip
+
+RUN apt-get update && \
+    # Miniconda's build of gcc is way out of date; monkey-patch some linking problems that affect
+    # packages like xgboost and Shapely
+    rm /opt/conda/lib/libstdc++* && rm /opt/conda/lib/libgomp.* && \
+    ln -s /usr/lib/x86_64-linux-gnu/libgomp.so.1 /opt/conda/lib/libgomp.so.1 && \
+    ln -s /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/conda/lib/libstdc++.so.6
+    
+RUN cd /usr/local/src && pip install scikit-learn tables
+RUN cd /usr/local/src && conda install lxml h5py hdf5 html5lib beautifulsoup4
+
+##############################################################################
+# LightGBM-GPU
+##############################################################################
+
+RUN cd /usr/local/src && mkdir lightgbm && cd lightgbm && \
+git clone -b v2.3.1 https://github.com/microsoft/LightGBM && \
+cd LightGBM && mkdir build && cd build && \
+    cmake -DUSE_GPU=1 -DOpenCL_LIBRARY=/usr/local/cuda/lib64/libOpenCL.so -DOpenCL_INCLUDE_DIR=/usr/local/cuda/include/ .. && \ 
+    make OPENCL_HEADERS=/usr/local/cuda/targets/x86_64-linux/include LIBOPENCL=/usr/local/cuda/targets/x86_64-linux/lib
+
+ENV PATH /usr/local/src/lightgbm/LightGBM:${PATH}
+
+RUN /bin/bash -c "cd /usr/local/src/lightgbm/LightGBM/python-package && python setup.py install --precompile"
+
+##############################################################################
+# XGBoost-GPU
+##############################################################################
+RUN cd /usr/local/src && pip install xgboost
+
+##############################################################################
+# tensorflow
+##############################################################################
+RUN cd /usr/local/src && pip --no-cache-dir install -I -U tensorflow==2.2.0
+RUN cd /usr/local/src && pip install keras
+
+##############################################################################
+# rapidsai
+##############################################################################
+RUN cd /usr/local/src && conda install -c rapidsai -c nvidia -c conda-forge -c defaults rapids=0.14 python=3.7 cudatoolkit=10.1
+RUN conda install -y -c conda-forge ipywidgets && jupyter nbextension enable --py widgetsnbextension
+
+##############################################################################
+# xfeat
+##############################################################################
+RUN cd /usr/local/src && git clone --recursive https://github.com/pfnet-research/xfeat && \
+cd xfeat && python setup.py install
+
+##############################################################################
+# other libraries
+##############################################################################
+RUN cd /usr/local/src && pip install albumentations seaborn pyarrow fastparquet catboost kaggle \
+    category_encoders optuna opencv-python image-classifiers tsfresh librosa gsutil
+RUN cd /usr/local/src && conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
+RUN cd /usr/local/src && pip install git+https://github.com/hyperopt/hyperopt.git
