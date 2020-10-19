@@ -14,59 +14,71 @@ import pandas as pd
 import seaborn as sns
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
+from sklearn.preprocessing import MinMaxScaler
+
+import cudf
+import cupy as cp
+from src.evaluation import calc_metric, pr_auc
+from src.features import (
+    Basic,
+    BasicOld,
+    ConcatCategory,
+    HandMade,
+    LatLon,
+    MergePublishedLandPrice,
+    MergePublishedLandPricePred,
+    MultipleNumerical,
+    PublishedLandPriceTrainTest,
+    TargetEncoding,
+    generate_features,
+    load_features,
+)
+from src.models import get_model
+from src.utils import (
+    configure_logger,
+    default_feature_selector,
+    delete_duplicated_columns,
+    feature_existence_checker,
+    get_preprocess_parser,
+    load_config,
+    load_pickle,
+    make_submission,
+    merge_by_concat,
+    plot_feature_importance,
+    reduce_mem_usage,
+    save_json,
+    save_pickle,
+    seed_everything,
+    slack_notify,
+    timer,
+)
+from src.validation import (
+    get_validation,
+    remove_correlated_features,
+    remove_ks_features,
+    select_features,
+)
+from xfeat import (
+    ConstantFeatureEliminator,
+    DuplicatedFeatureEliminator,
+    SpearmanCorrelationEliminator,
+)
 
 if __name__ == "__main__":
     sys.path.append("./")
 
+    pool = cp.cuda.MemoryPool(cp.cuda.malloc_managed)
+    cp.cuda.set_allocator(pool.malloc)
+
     warnings.filterwarnings("ignore")
-
-    from src.utils import (
-        get_preprocess_parser,
-        load_config,
-        configure_logger,
-        timer,
-        feature_existence_checker,
-        save_json,
-        plot_feature_importance,
-        seed_everything,
-        slack_notify,
-        delete_duplicated_columns,
-        reduce_mem_usage,
-        merge_by_concat,
-        load_pickle,
-        save_pickle,
-        make_submission,
-    )
-    from src.features import (
-        Basic,
-        LabelEncoding,
-        Spectrum,
-        SpectrumPeaks,
-        SpectrumPeaks50Pct,
-        SpectrumKShape,
-        Params,
-        generate_features,
-        load_features,
-    )
-    from src.validation import (
-        get_validation,
-        select_features,
-        remove_correlated_features,
-        remove_ks_features,
-    )
-    from src.models import get_model
-    from src.evaluation import (
-        calc_metric,
-        pr_auc,
-    )
-
-    seed_everything(1031)
 
     parser = get_preprocess_parser()
     args = parser.parse_args()
 
     config = load_config(args.config)
     configure_logger(args.config, log_dir=args.log_dir, debug=args.debug)
+
+    seed_everything(config["seed_everything"])
 
     logging.info(f"config: {args.config}")
     logging.info(f"debug: {args.debug}")
@@ -78,7 +90,7 @@ if __name__ == "__main__":
     output_root_dir = Path(config["output_dir"])
     feature_dir = Path(config["dataset"]["feature_dir"])
 
-    config_name: str = args.config.split("/")[-1].replace(".yml", "")
+    config_name = args.config.split("/")[-1].replace(".yml", "")
     output_dir = output_root_dir / config_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -93,15 +105,15 @@ if __name__ == "__main__":
 
     if (not feature_existence_checker(feature_dir, config["features"])) or args.force:
         with timer(name="load data"):
-            train = load_pickle(input_dir / "train_fitting.pkl")
-            test = load_pickle(input_dir / "test_fitting.pkl")
-            sample_submission = load_pickle(input_dir / "atmaCup5__sample_submission.pkl")
+            train = load_pickle(input_dir / "train_data.pkl")
+            test = load_pickle(input_dir / "test_data.pkl")
         with timer(name="generate features"):
             generate_features(
                 train_df=train,
                 test_df=test,
                 namespace=globals(),
                 required=config["features"],
+                use_cudf=True,
                 overwrite=args.force,
                 log=True,
             )
@@ -115,62 +127,54 @@ if __name__ == "__main__":
 
     with timer("feature loading"):
         x_train, x_test = load_features(config)
-        x_train.columns = ["".join(c if c.isalnum() else "_" for c in str(x)) for x in x_train.columns]
-        x_test.columns = ["".join(c if c.isalnum() else "_" for c in str(x)) for x in x_test.columns]
-
-    with timer("delete chip_id c695a1e61e002b34e556"):
-        train = load_pickle(input_dir / "train_fitting.pkl")
-        chip_c695a1e61e002b34e556_spectrum_id = train.query("chip_id == 'c695a1e61e002b34e556'")["spectrum_id"]
-        x_train = x_train.loc[~x_train["spectrum_id"].isin(chip_c695a1e61e002b34e556_spectrum_id), :]
+        x_train.columns = [
+            "".join(c if c.isalnum() else "_" for c in str(x)) for x in x_train.columns
+        ]
+        x_test.columns = [
+            "".join(c if c.isalnum() else "_" for c in str(x)) for x in x_test.columns
+        ]
 
     with timer("delete duplicated columns"):
         x_train = delete_duplicated_columns(x_train)
         x_test = delete_duplicated_columns(x_test)
 
-    with timer("add predict"):
-        x_train["nn1"] = np.load("output/notebook/oof_preds.npy")[list(x_train.index)]
-        x_test["nn1"] = np.load("output/notebook/test_preds.npy")
-
-        x_train["nn2"] = np.load("output/notebook/oof_preds2.npy")
-        x_test["nn2"] = np.load("output/notebook/test_preds2.npy")
-
-        x_train["nn3"] = np.load("output/notebook/oof_preds3.npy")
-        x_test["nn3"] = np.load("output/notebook/test_preds3.npy")
-
-        x_train["rgf"] = np.load("output/26_rfg_classifer/oof_preds.npy")
-        x_test["rgf"] = np.load("output/26_rfg_classifer/test_preds.npy")
-
-        x_train["ert1"] = np.load("output/25_ert_classifer/oof_preds.npy")
-        x_test["ert1"] = np.load("output/25_ert_classifer/test_preds.npy")
-
-        x_train["ert2"] = np.load("output/32_ert_tsfresh/oof_preds.npy")
-        x_test["ert2"] = np.load("output/32_ert_tsfresh/test_preds.npy")
-
-        x_train["lgbm1"] = np.load("output/23_add_params_feats/oof_preds.npy")
-        x_test["lgbm1"] = np.load("output/23_add_params_feats/test_preds.npy")
-
-        x_train["lgbm2"] = np.load("output/31_add_tsfresh_feats/oof_preds.npy")
-        x_test["lgbm2"] = np.load("output/31_add_tsfresh_feats/test_preds.npy")
-
-        x_train["cat"] = np.load("output/21_catboost/oof_preds.npy")
-        x_test["cat"] = np.load("output/21_catboost/test_preds.npy")
+    with timer("load predictions"):
+        org_cols = x_train.columns.to_list()
+        preds = config["stacking"]["predictions"]
+        for pred in preds:
+            x_train[pred] = np.load("output/" + pred + "/oof_preds.npy")
+            x_test[pred] = np.load("output/" + pred + "/test_preds.npy")
 
     with timer("make target and remove cols"):
         y_train = x_train["target"].values.reshape(-1)
+
+        if config["pre_process"]["do"]:
+            col = config["pre_process"]["col"]
+            y_train = y_train / x_train[col].values.reshape(-1)
+
+        y_train = np.log1p(y_train)
+
+        if config["pre_process"]["xentropy"]:
+            scaler = MinMaxScaler()
+            y_train = scaler.fit_transform(y_train.reshape(-1, 1)).reshape(-1)
+        else:
+            scaler = None
+
         cols: List[str] = x_train.columns.tolist()
         with timer("remove col"):
             remove_cols = [
-                "spectrum_id",
-                "spectrum_filename",
                 "target",
-                "chip_id",
-                "kshape_k_50_spectrum",
-                "kshape_k_70_spectrum",
-                "kshape_k_100_spectrum",
-                "mean_intensity_groupby_spectrum_filename",
+                "Period",
+                "target_MunicipalityCode_mean",
+                "target_DistrictName_mean",
+                "target_NearestStation_mean",
+                "target_LandShape_mean",
+                "target_CityPlanning_mean",
             ]
+            if not config["stacking"]["use_org_cols"]:
+                remove_cols += org_cols
             cols = [col for col in cols if col not in remove_cols]
-        x_train, x_test = x_train[cols], x_test[cols]
+            x_train, x_test = x_train[cols], x_test[cols]
 
     assert len(x_train) == len(y_train)
     logging.debug(f"number of features: {len(cols)}")
@@ -180,38 +184,50 @@ if __name__ == "__main__":
     # ===============================
     # === Feature Selection
     # ===============================
-    with timer("Feature Selection with correlation"):
-        to_remove = remove_correlated_features(x_train, cols)
-        cols = [col for col in cols if col not in to_remove]
+    with timer("Feature Selection"):
+        with timer("Feature Selection by ConstantFeatureEliminator"):
+            selector = ConstantFeatureEliminator()
+            x_train = selector.fit_transform(x_train)
+            x_test = selector.transform(x_test)
+            assert len(x_train.columns) == len(x_test.columns)
+            logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+            cols = x_train.columns.tolist()
 
-    # with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
-    #     number_cols = x_train[cols].select_dtypes(include='number').columns
-    #     to_remove = remove_ks_features(x_train[number_cols], x_test[number_cols], number_cols)
-    #     cols = [col for col in cols if col not in to_remove]
+        with timer("Feature Selection by SpearmanCorrelationEliminator"):
+            selector = SpearmanCorrelationEliminator(threshold=0.995)
+            x_train = selector.fit_transform(x_train)
+            x_test = selector.transform(x_test)
+            assert len(x_train.columns) == len(x_test.columns)
+            logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+            cols = x_train.columns.tolist()
 
-    logging.info("Training with {} features".format(len(cols)))
-    with timer("remove cols"):
-        x_train, x_test = x_train[cols], x_test[cols]
+        # with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
+        #     number_cols = x_train[cols].select_dtypes(include='number').columns
+        #     to_remove = remove_ks_features(x_train[number_cols], x_test[number_cols], number_cols)
+        #     cols = [col for col in cols if col not in to_remove]
+
+        cols = x_train.columns.tolist()
+        categorical_cols = x_train.select_dtypes(include="category").columns.tolist()
+        config["categorical_cols"] = categorical_cols
+        logging.info("Training with {} features".format(len(cols)))
 
     # ===============================
     # === Adversarial Validation
     # ===============================
     logging.info("Adversarial Validation")
     with timer("Adversarial Validation"):
-        train_adv = x_train.select_dtypes(include='number').copy()
-        test_adv = x_test.select_dtypes(include='number').copy()
+        train_adv = x_train.copy()
+        test_adv = x_test.copy()
 
         train_adv["target"] = 0
         test_adv["target"] = 1
         train_test_adv = pd.concat(
-            [train_adv, test_adv],
-            axis=0,
-            sort=False).reset_index(drop=True)
+            [train_adv, test_adv], axis=0, sort=False
+        ).reset_index(drop=True)
 
-        splits = KFold(
-            n_splits=5,
-            random_state=1223,
-            shuffle=True).split(train_test_adv)
+        splits = KFold(n_splits=5, random_state=1223, shuffle=True).split(
+            train_test_adv
+        )
 
         aucs = []
         importance = np.zeros(len(cols))
@@ -231,21 +247,23 @@ if __name__ == "__main__":
                 train_lgb,
                 valid_sets=[train_lgb, valid_lgb],
                 valid_names=["train", "valid"],
-                **train_params)
+                **train_params,
+            )
 
             aucs.append(clf.best_score)
-            importance += clf.feature_importance(
-                importance_type="gain") / 5
+            importance += clf.feature_importance(importance_type="gain") / 5
 
         # Check the feature importance
         feature_imp = pd.DataFrame(
-            sorted(zip(importance, cols)), columns=["value", "feature"])
+            sorted(zip(importance, cols)), columns=["value", "feature"]
+        )
 
         plt.figure(figsize=(20, 10))
         sns.barplot(
             x="value",
             y="feature",
-            data=feature_imp.sort_values(by="value", ascending=False).head(50))
+            data=feature_imp.sort_values(by="value", ascending=False).head(50),
+        )
         plt.title("LightGBM Features")
         plt.tight_layout()
         plt.savefig(output_dir / "feature_importance_adv.png")
@@ -255,11 +273,11 @@ if __name__ == "__main__":
         for i, auc in enumerate(aucs):
             config["av_result"]["score"][f"fold{i}"] = auc
 
-        config["av_result"]["feature_importances"] = \
-            feature_imp.set_index("feature").sort_values(
-                by="value",
-                ascending=False
-            ).to_dict()["value"]
+        config["av_result"]["feature_importances"] = (
+            feature_imp.set_index("feature")
+            .sort_values(by="value", ascending=False)
+            .to_dict()["value"]
+        )
 
     # ===============================
     # === Train model
@@ -269,7 +287,7 @@ if __name__ == "__main__":
     # get folds
     with timer("Train model"):
         with timer("get validation"):
-            x_train["target"] = y_train
+            x_train["target"] = np.log1p(y_train) > 7.0
             splits = get_validation(x_train, config)
             del x_train["target"]
             gc.collect()
@@ -290,6 +308,7 @@ if __name__ == "__main__":
             valid_features=None,
             feature_name=cols,
             folds_ids=splits,
+            target_scaler=scaler,
             config=config,
         )
 
@@ -297,7 +316,7 @@ if __name__ == "__main__":
     # === Make submission
     # ===============================
 
-    sample_submission = load_pickle(input_dir / "atmaCup5__sample_submission.pkl")
+    sample_submission = pd.read_csv(input_dir / "sample_submission.csv")
     submission_df = make_submission(test_preds, sample_submission)
 
     # ===============================
@@ -320,4 +339,4 @@ if __name__ == "__main__":
 
     save_pickle(models, output_dir / "model.pkl")
 
-    slack_notify("main 終わったぞ\n" + str(config))
+    slack_notify(config_name + "終わったぞ\n" + str(config))

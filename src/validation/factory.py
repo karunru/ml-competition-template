@@ -26,6 +26,7 @@ def validation_refinement_by_day_of_week(
 
     return split_refinement_by_day_of_week
 
+
 # https://eng.uber.com/omphalos/
 # https://www.kaggle.com/harupy/m5-baseline?scriptVersionId=30229819
 def slide_window_split_by_day(
@@ -107,6 +108,17 @@ def date_hold_out(
     return split
 
 
+def kfold(df: pd.DataFrame, config: dict) -> List[Tuple[np.ndarray, np.ndarray]]:
+    params = config["val"]["params"]
+    kf = KFold(
+        n_splits=params["n_splits"], random_state=params["random_state"], shuffle=True
+    )
+    split = []
+    for trn_idx, val_idx in kf.split(df):
+        split.append((np.asarray(trn_idx), np.asarray(val_idx)))
+    return split
+
+
 def group_kfold(
     df: pd.DataFrame, groups: pd.Series, config: dict
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
@@ -119,8 +131,8 @@ def group_kfold(
     for trn_grp_idx, val_grp_idx in kf.split(uniq_groups):
         trn_grp = uniq_groups[trn_grp_idx]
         val_grp = uniq_groups[val_grp_idx]
-        trn_idx = df[df["group"].isin(trn_grp)].index.values
-        val_idx = df[df["group"].isin(val_grp)].index.values
+        trn_idx = df[df[params["group"]].isin(trn_grp)].index.values
+        val_idx = df[df[params["group"]].isin(val_grp)].index.values
         split.append((trn_idx, val_idx))
 
     return split
@@ -131,7 +143,9 @@ def stratified_kfold(
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     params = config["val"]["params"]
 
-    skf = StratifiedKFold(n_splits=params["n_splits"], random_state=params["random_state"], shuffle=True)
+    skf = StratifiedKFold(
+        n_splits=params["n_splits"], random_state=params["random_state"], shuffle=True
+    )
 
     y = np.array(df[params["target"]])
     X_col = [col for col in df.columns.to_list() if col is not params["target"]]

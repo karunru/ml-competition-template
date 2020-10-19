@@ -3,12 +3,14 @@ import gc
 import inspect
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import pandas as pd
 
+import cudf
 from src.sampling import shrink_by_date_index
 from src.utils import load_pickle, reduce_mem_usage, save_pickle, timer
+from xfeat.types import XDataFrame
 
 
 class Feature(metaclass=abc.ABCMeta):
@@ -28,8 +30,8 @@ class Feature(metaclass=abc.ABCMeta):
 
     def run(
         self,
-        train_df: pd.DataFrame,
-        test_df: Optional[pd.DataFrame] = None,
+        train_df: XDataFrame,
+        test_df: Optional[XDataFrame] = None,
         log: bool = False,
     ):
         with timer(self.name, log=log):
@@ -46,7 +48,9 @@ class Feature(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def create_features(
-        self, train_df: pd.DataFrame, test_df: Optional[pd.DataFrame],
+        self,
+        train_df: XDataFrame,
+        test_df: Optional[XDataFrame],
     ):
         raise NotImplementedError
 
@@ -79,6 +83,7 @@ def generate_features(
     test_df: pd.DataFrame,
     namespace: dict,
     required: list,
+    use_cudf: bool,
     overwrite: bool,
     log: bool = False,
 ):
@@ -91,7 +96,10 @@ def generate_features(
             else:
                 logging.info(f"{f.name} was skipped")
         else:
-            f.run(train_df, test_df, log).save()
+            if use_cudf:
+                f.run(cudf.from_pandas(train_df), cudf.from_pandas(test_df), log).save()
+            else:
+                f.run(train_df, test_df, log).save()
             gc.collect()
 
 

@@ -2,18 +2,18 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import ExtraTreesClassifier, ExtraTreesRegressor
 
+from KTBoost.KTBoost import BoostingClassifier, BoostingRegressor
 from xfeat.types import XDataFrame, XSeries
 
 from .base import BaseModel
 
-ERTModel = Union[ExtraTreesClassifier, ExtraTreesRegressor]
+KTModel = Union[BoostingClassifier, BoostingRegressor]
 AoD = Union[np.ndarray, XDataFrame]
 AoS = Union[np.ndarray, XSeries]
 
 
-class ExtremelyRandomizedTrees(BaseModel):
+class KTBoost(BaseModel):
     def fit(
         self,
         x_train: AoD,
@@ -22,13 +22,13 @@ class ExtremelyRandomizedTrees(BaseModel):
         y_valid: AoS,
         config: dict,
         **kwargs
-    ) -> Tuple[ERTModel, dict]:
+    ) -> Tuple[KTModel, dict]:
         model_params = config["model"]["model_params"]
-        self.mode = config["model"]["train_params"]["mode"]
-        if self.mode == "regression":
-            model = ExtraTreesRegressor(oob_score=True, **model_params)
+        mode = config["model"]["train_params"]["mode"]
+        if mode == "regression":
+            model = BoostingRegressor(**model_params)
         else:
-            model = ExtraTreesClassifier(oob_score=True, **model_params)
+            model = BoostingClassifier(**model_params)
 
         categorical_cols = config["categorical_cols"]
 
@@ -46,14 +46,16 @@ class ExtremelyRandomizedTrees(BaseModel):
             x_valid[col] = x_valid[col].fillna(x_train[col].mean())
 
         model.fit(x_train.values, y_train)
-        best_score = model.oob_score_
+
+        best_score = {"valid_score": model.score(x_valid.values, y_valid)}
+
         return model, best_score
 
-    def get_best_iteration(self, model: ERTModel) -> int:
-        return len(model.estimators_)
+    def get_best_iteration(self, model: KTModel) -> int:
+        return model.n_estimators_
 
     def predict(
-        self, model: ERTModel, features: Union[pd.DataFrame, np.ndarray]
+        self, model: KTModel, features: Union[pd.DataFrame, np.ndarray]
     ) -> np.ndarray:
         for col in features.select_dtypes(include="category").columns:
             features[col] = features[col].cat.add_categories("Unknown")
@@ -68,10 +70,7 @@ class ExtremelyRandomizedTrees(BaseModel):
         for col in numerical_cols:
             features[col] = features[col].fillna(features[col].mean())
 
-        if self.mode == "regression":
-            return model.predict(features.values)
-        else:
-            return model.predict_proba(features.values)[:, 1]
+        return model.predict(features.values)
 
-    def get_feature_importance(self, model: ERTModel) -> np.ndarray:
+    def get_feature_importance(self, model: KTModel) -> np.ndarray:
         return model.feature_importances_

@@ -1,36 +1,43 @@
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier, CatBoostRegressor
 
+from xfeat.types import XDataFrame, XSeries
+
 from .base import BaseModel
 
 CatModel = Union[CatBoostClassifier, CatBoostRegressor]
+AoD = Union[np.ndarray, XDataFrame]
+AoS = Union[np.ndarray, XSeries]
 
 
 class CatBoost(BaseModel):
     def fit(
         self,
-        x_train: np.ndarray,
-        y_train: np.ndarray,
-        x_valid: np.ndarray,
-        y_valid: np.ndarray,
+        x_train: AoD,
+        y_train: AoS,
+        x_valid: AoD,
+        y_valid: AoS,
         config: dict,
         **kwargs
     ) -> Tuple[CatModel, dict]:
         model_params = config["model"]["model_params"]
         mode = config["model"]["train_params"]["mode"]
+        categorical_cols = x_train.select_dtypes(include="category").columns
+
         if mode == "regression":
+            # model = CatBoostRegressor(cat_features=categorical_cols, **model_params)
             model = CatBoostRegressor(**model_params)
         else:
+            # model = CatBoostClassifier(cat_features=categorical_cols, **model_params)
             model = CatBoostClassifier(**model_params)
 
         model.fit(
-            x_train,
+            x_train.values,
             y_train,
-            eval_set=(x_valid, y_valid),
-            use_best_model=True,
+            eval_set=(x_valid.values, y_valid),
             verbose=model_params["early_stopping_rounds"],
         )
         best_score = model.best_score_
@@ -42,7 +49,8 @@ class CatBoost(BaseModel):
     def predict(
         self, model: CatModel, features: Union[pd.DataFrame, np.ndarray]
     ) -> np.ndarray:
-        return model.predict(features)
+        # if model.get_param("loss_function")
+        return model.predict(features.values)
 
     def get_feature_importance(self, model: CatModel) -> np.ndarray:
         return model.feature_importances_

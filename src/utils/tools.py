@@ -2,20 +2,25 @@ import logging
 
 import pandas as pd
 
+from xfeat import (
+    ConstantFeatureEliminator,
+    DuplicatedFeatureEliminator,
+    Pipeline,
+    SpearmanCorrelationEliminator,
+)
+from xfeat.types import XDataFrame
+from xfeat.utils import compress_df, is_cudf
 
-# https://www.kaggle.com/harupy/m5-baseline?scriptVersionId=30715918
+
 def reduce_mem_usage(
-    df: pd.DataFrame, verbose: bool = True, debug: bool = True
-) -> pd.DataFrame:
+    df: XDataFrame, verbose: bool = True, debug: bool = True
+) -> XDataFrame:
     start_mem = df.memory_usage().sum() / 1024 ** 2
-    int_columns = df.select_dtypes(include=["int"]).columns
-    float_columns = df.select_dtypes(include=["float"]).columns
 
-    for col in int_columns:
-        df[col] = pd.to_numeric(df[col], downcast="integer")
-
-    for col in float_columns:
-        df[col] = pd.to_numeric(df[col], downcast="float")
+    if is_cudf(df):
+        df = compress_df(df.to_pandas())
+    else:
+        df = compress_df(df)
 
     end_mem = df.memory_usage().sum() / 1024 ** 2
     reduction = (start_mem - end_mem) / start_mem
@@ -31,3 +36,13 @@ def reduce_mem_usage(
         logging.debug(msg)
 
     return df
+
+
+def default_feature_selector():
+    return Pipeline(
+        [
+            DuplicatedFeatureEliminator(),
+            ConstantFeatureEliminator(),
+            SpearmanCorrelationEliminator(threshold=0.9),
+        ]
+    )

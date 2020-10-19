@@ -1,3 +1,4 @@
+import json
 import os
 
 import requests
@@ -9,10 +10,14 @@ def slack_notify(msg="おわったよ"):
         "https": "",
     }
 
-    slack_user_id = "karunru"
-    slack_webhook_url = (
-        "https://hooks.slack.com/services/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"
-    )
-    requests.post(
-        slack_webhook_url, json={"text": f"<@{slack_user_id}> {msg}"}, proxies=proxies
+    slack_post_url = "https://slack.com/api/chat.postMessage"
+    slack_token = os.environ["SLACK_TOKEN"]
+    headers = {
+        "content-type": "application/json",
+        "Authorization": "Bearer " + slack_token,
+    }
+    channel = "CF6FQD7FX"
+    data = {"channel": channel, "text": msg}
+    return requests.post(
+        slack_post_url, data=json.dumps(data), proxies=proxies, headers=headers
     )

@@ -35,11 +35,3 @@ def load_pickle(file_path):
 
 def load_pickle_with_condition(file_path: Path, col: str, value) -> pd.DataFrame:
     return load_pickle(file_path).query(f"{col} == @value")
-
-
-def load_spectrum_raw_data(file_path: Path) -> pd.DataFrame:
-    spec_df = pd.read_csv(file_path, sep='\t', header=None)
-    spec_df.columns = ["wavelength", "intensity"]
-    spec_df["spectrum_filename"] = file_path.name
-
-    return spec_df

@@ -3,40 +3,68 @@ import logging
 from collections import defaultdict
 from typing import Optional, Tuple, Union
 
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from lightgbm import Booster
 from matplotlib import pyplot as plt
 
+import lightgbm as lgb
+from lightgbm import Booster
 from src.evaluation import pr_auc
+from xfeat.types import XDataFrame, XSeries
 
+from ..evaluation.lgbm import focal_loss_lgb, focal_loss_lgb_eval_error
 from .base import BaseModel
 
 LGBMModel = Union[lgb.LGBMClassifier, lgb.LGBMRegressor]
+AoD = Union[np.ndarray, XDataFrame]
+AoS = Union[np.ndarray, XSeries]
 
 
 class LightGBM(BaseModel):
+    config = dict()
+
     def fit(
         self,
-        x_train: np.ndarray,
-        y_train: np.ndarray,
-        x_valid: Optional[np.ndarray],
-        y_valid: Optional[np.ndarray],
+        x_train: AoD,
+        y_train: AoS,
+        x_valid: AoD,
+        y_valid: AoS,
         config: dict,
         **kwargs
     ) -> Tuple[LGBMModel, dict]:
+
         callbacks = [
-            log_early_stopping(
-                stopping_rounds=config["model"]["train_params"][
-                    "early_stopping_rounds"
-                ],
-                first_metric_only=config["model"]["model_params"]["first_metric_only"],
-            ),
             log_evaluation_callback(
                 period=config["model"]["train_params"]["verbose_eval"]
             ),
         ]
+
+        if "early_stopping_rounds" in config["model"]["train_params"].keys():
+            callbacks += [
+                log_early_stopping(
+                    stopping_rounds=config["model"]["train_params"][
+                        "early_stopping_rounds"
+                    ],
+                    first_metric_only=config["model"]["model_params"][
+                        "first_metric_only"
+                    ],
+                )
+            ]
+
+        if "adaptive_learning_rate" in config["model"].keys():
+            callbacks += [
+                LrSchedulingCallback(
+                    strategy_func=globals().get(
+                        config["model"]["adaptive_learning_rate"]["method"]
+                    ),
+                    halve_iter=config["model"]["adaptive_learning_rate"]["halve_iter"],
+                    warmup_iter=config["model"]["adaptive_learning_rate"][
+                        "warmup_iter"
+                    ],
+                    start_lr=config["model"]["adaptive_learning_rate"]["start_lr"],
+                    min_lr=config["model"]["adaptive_learning_rate"]["min_lr"],
+                ),
+            ]
 
         d_train = lgb.Dataset(x_train, label=y_train)
         del x_train, y_train
@@ -55,17 +83,48 @@ class LightGBM(BaseModel):
 
         lgb_model_params = config["model"]["model_params"]
         lgb_train_params = config["model"]["train_params"]
-        model = lgb.train(
-            params=lgb_model_params,
-            train_set=d_train,
-            valid_sets=valid_sets,
-            valid_names=valid_names,
-            # categorical_feature = [col for col in x_train.columns if col.find("Label_En") != -1],
-            callbacks=callbacks,
-            fobj=None,
-            feval=pr_auc,
-            **lgb_train_params
-        )
+
+        if "alpha" in config["model"]["focal_loss"].keys():
+
+            def focal_loss(x, y):
+                return focal_loss_lgb(
+                    x,
+                    y,
+                    alpha=config["model"]["focal_loss"]["alpha"],
+                    gamma=config["model"]["focal_loss"]["gamma"],
+                )
+
+            def focal_loss_eval(x, y):
+                return focal_loss_lgb_eval_error(
+                    x,
+                    y,
+                    alpha=config["model"]["focal_loss"]["alpha"],
+                    gamma=config["model"]["focal_loss"]["gamma"],
+                )
+
+            model = lgb.train(
+                params=lgb_model_params,
+                train_set=d_train,
+                valid_sets=valid_sets,
+                valid_names=valid_names,
+                # categorical_feature=categorical_cols,
+                callbacks=callbacks,
+                fobj=focal_loss,
+                feval=focal_loss_eval,
+                **lgb_train_params
+            )
+        else:
+            model = lgb.train(
+                params=lgb_model_params,
+                train_set=d_train,
+                valid_sets=valid_sets,
+                valid_names=valid_names,
+                # categorical_feature=categorical_cols,
+                callbacks=callbacks,
+                fobj=None,
+                **lgb_train_params
+            )
+
         best_score = dict(model.best_score)
         return model, best_score
 
@@ -79,25 +138,6 @@ class LightGBM(BaseModel):
 
     def get_feature_importance(self, model: LGBMModel) -> np.ndarray:
         return model.feature_importance(importance_type="gain")
-
-    def post_process(
-        self,
-        oof_preds: np.ndarray,
-        test_preds: np.ndarray,
-        valid_preds: Optional[np.ndarray],
-        y: np.ndarray,
-        y_valid: Optional[np.ndarray],
-        config: dict,
-    ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray]]:
-        # Override
-        # _oof_preds = np.expm1(oof_preds)
-        # _test_preds = np.expm1(test_preds)
-        # if valid_preds is not None:
-        #     _valid_preds = np.expm1(valid_preds)
-        # else:
-        #     _valid_preds = None
-        # return _oof_preds, _test_preds, _valid_preds
-        return oof_preds, test_preds, valid_preds
 
 
 def log_evaluation_callback(period=1, show_stdv=True):
@@ -113,7 +153,11 @@ def log_evaluation_callback(period=1, show_stdv=True):
                     for x in env.evaluation_result_list
                 ]
             )
-            logging.debug("[{}]\t{}".format(env.iteration + 1, result))
+            logging.debug(
+                "[{}]\tlearning rate : {}\t{}".format(
+                    env.iteration + 1, env.params.get("learning_rate"), result
+                )
+            )
 
     _callback.order = 10
     return _callback
@@ -224,3 +268,99 @@ def log_early_stopping(stopping_rounds, first_metric_only=False):
 
     _callback.order = 30
     return _callback
+
+
+class LrSchedulingCallback(object):
+    """ラウンドごとの学習率を動的に制御するためのコールバック"""
+
+    def __init__(self, strategy_func, halve_iter, warmup_iter, start_lr, min_lr):
+        # 学習率を決定するための関数
+        self.scheduler_func = strategy_func
+        # 検証用データに対する評価指標の履歴
+        self.eval_metric_history = []
+        # 半減させるiteration
+        self.halve_iter = halve_iter
+        # 半減を開始するiteration
+        self.warmup_iter = warmup_iter
+        # 最初のlearning rate
+        self.start_lr = start_lr
+        # 最小のlearning rate
+        self.min_lr = min_lr
+
+    def __call__(self, env):
+        # 現在の学習率を取得する
+        current_lr = env.params.get("learning_rate")
+
+        # 検証用データに対する評価結果を取り出す (先頭の評価指標)
+        first_eval_result = env.evaluation_result_list[0]
+        # スコア
+        metric_score = first_eval_result[2]
+        # 評価指標は大きい方が優れているか否か
+        is_higher_better = first_eval_result[3]
+
+        # 評価指標の履歴を更新する
+        self.eval_metric_history.append(metric_score)
+        # 現状で最も優れたラウンド数を計算する
+        best_round_find_func = np.argmax if is_higher_better else np.argmin
+        best_round = best_round_find_func(self.eval_metric_history)
+
+        # 新しい学習率を計算する
+        new_lr = self.scheduler_func(
+            current_lr=current_lr,
+            eval_history=self.eval_metric_history,
+            best_round=best_round,
+            is_higher_better=is_higher_better,
+            halve_iter=self.halve_iter,
+            warmup_iter=self.warmup_iter,
+            start_lr=self.start_lr,
+            min_lr=self.min_lr,
+        )
+
+        # 次のラウンドで使う学習率を更新する
+        update_params = {
+            "learning_rate": new_lr,
+        }
+        env.model.reset_parameter(update_params)
+        env.params.update(update_params)
+
+    @property
+    def before_iteration(self):
+        # コールバックは各イテレーションの後に実行する
+        return False
+
+
+def halve_scheduler_func(
+    current_lr,
+    eval_history,
+    best_round,
+    is_higher_better,
+    halve_iter,
+    warmup_iter,
+    start_lr,
+    min_lr,
+):
+    """次のラウンドで用いる学習率を決定するための関数 (この中身を好きに改造する)
+
+    :param current_lr: 現在の学習率 (指定されていない場合の初期値は None)
+    :param eval_history: 検証用データに対する評価指標の履歴
+    :param best_round: 現状で最も評価指標の良かったラウンド数
+    :param is_higher_better: 高い方が性能指標として優れているか否か
+    :param halve_iter: 学習率を半減させるラウンド数
+    :param warmup_iter: 半減を開始するラウンド数
+    :param start_lr: 学習率の初期値
+    :param min_lr: 最小の学習率
+    :return: 次のラウンドで用いる学習率
+
+    NOTE: 学習を打ち切りたいときには callback.EarlyStopException を上げる
+    """
+    # 学習率が設定されていない場合のデフォルト
+    current_lr = current_lr or start_lr
+
+    # halve_iter毎に学習率を半分にしてみる
+    if len(eval_history) > warmup_iter and len(eval_history) % halve_iter == 0:
+        current_lr /= 2
+
+    # 小さすぎるとほとんど学習が進まないので下限も用意する
+    current_lr = max(min_lr, current_lr)
+
+    return current_lr

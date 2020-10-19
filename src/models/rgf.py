@@ -26,16 +26,33 @@ class RegularizedGreedyForest(BaseModel):
         else:
             model = FastRGFClassifier(**model_params)
 
-        x_train = pd.DataFrame(x_train).replace([np.inf, -np.inf], np.nan).fillna(-999.0).values.astype("float32")
-        y_train = pd.DataFrame(y_train).replace([np.inf, -np.inf], np.nan).fillna(-999.0).values.astype("float32")
-
-        model.fit(
-            x_train,
-            y_train
+        x_train = (
+            pd.DataFrame(x_train)
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(-999.0)
+            .values.astype("float32")
+        )
+        y_train = (
+            pd.DataFrame(y_train)
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(-999.0)
+            .values.astype("float32")
         )
 
-        x_valid = pd.DataFrame(x_valid).replace([np.inf, -np.inf], np.nan).fillna(-999.0).values.astype("float32")
-        y_valid = pd.DataFrame(y_valid).replace([np.inf, -np.inf], np.nan).fillna(-999.0).values.astype("float32")
+        model.fit(x_train, y_train)
+
+        x_valid = (
+            pd.DataFrame(x_valid)
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(-999.0)
+            .values.astype("float32")
+        )
+        y_valid = (
+            pd.DataFrame(y_valid)
+            .replace([np.inf, -np.inf], np.nan)
+            .fillna(-999.0)
+            .values.astype("float32")
+        )
         best_score = {"valid_score": model.score(x_valid, y_valid)}
 
         return model, best_score
@@ -47,9 +64,18 @@ class RegularizedGreedyForest(BaseModel):
         self, model: RGFModel, features: Union[pd.DataFrame, np.ndarray]
     ) -> np.ndarray:
         if isinstance(features, pd.DataFrame):
-            features = features.replace([np.inf, -np.inf], np.nan).fillna(-999.0).values.astype("float32")
+            features = (
+                features.replace([np.inf, -np.inf], np.nan)
+                .fillna(-999.0)
+                .values.astype("float32")
+            )
         else:
-            features = pd.DataFrame(features).replace([np.inf, -np.inf], np.nan).fillna(-999.0).values.astype("float32")
+            features = (
+                pd.DataFrame(features)
+                .replace([np.inf, -np.inf], np.nan)
+                .fillna(-999.0)
+                .values.astype("float32")
+            )
 
         return model.predict_proba(features)[:, 1]
 

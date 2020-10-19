@@ -1,0 +1,77 @@
+seed_everything: &seed 1031
+
+dataset:
+  dir: "input/re_real_estate_2020/"
+  feature_dir: "features"
+  params:
+
+features:
+  - Basic
+  - LatLon
+
+pre_process:
+  do: False
+  col: "Area"
+
+post_process:
+  do: False
+  col: "Area"
+
+av:
+  split_params:
+    n_splits: 5
+    random_state: *seed
+
+  model_params:
+    device_type: "gpu"
+    gpu_platform_id: 0
+    gpu_device_id: 0
+    objective: "binary"
+    metric: "auc"
+    boosting: "gbdt"
+    max_depth: 7
+    num_leaves: 75
+    learning_rate: 0.1
+    colsample_bytree: 0.7
+    subsample: 0.1
+    subsample_freq: 1
+    max_bin: 63
+    seed: *seed
+    feature_fraction_seed: *seed
+    drop_seed: *seed
+    verbose: -1
+    first_metric_only: True
+
+  train_params:
+    num_boost_round: 50000
+    early_stopping_rounds: 30
+    verbose_eval: 200
+
+model:
+  name: "ktb"
+  model_params:
+    loss: "ls"
+    update_step: "hybrid"
+    base_learner: "tree"
+    learning_rate: 0.05
+    n_estimators: 1000
+    max_depth: 6
+    min_samples_leaf: 1
+    min_weight_leaf: 1.0
+    criterion: "mse"
+    random_state: *seed
+    kernel: "rbf"
+    theta: 1.0
+    alphaReg: 1.0
+    verbose: 1
+
+  train_params:
+    mode: "regression"
+
+val:
+  name: "kfold"
+  params:
+    n_splits: 5
+    random_state: *seed
+
+output_dir: "output"

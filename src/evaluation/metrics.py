@@ -12,6 +12,10 @@ def rmse(y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]) -> fl
     return np.sqrt(mean_squared_error(y_true, y_pred))
 
 
+def rmsle(y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]) -> float:
+    return rmse(np.log1p(y_true), np.log1p(y_pred))
+
+
 def qwk(
     y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list], max_rat: int = 3
 ) -> float:
@@ -40,7 +44,7 @@ def qwk(
 def calc_metric(
     y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]
 ) -> float:
-    return pr_auc(y_true, y_pred)
+    return qwk(y_true, y_pred)
 
 
 if __name__ == "__main__":

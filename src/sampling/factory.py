@@ -1,6 +1,6 @@
 import datetime
 import logging
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -8,6 +8,10 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 
 from src.utils import timer
+from xfeat.types import XDataFrame, XSeries
+
+AoD = Union[np.ndarray, XDataFrame]
+AoS = Union[np.ndarray, XSeries]
 
 
 def shrink_by_release(x_trn: pd.DataFrame) -> pd.DataFrame:
@@ -104,9 +108,7 @@ def random_under_sample_and_smote(
     return sampled_x, sampled_y
 
 
-def get_sampling(
-    x_trn: np.ndarray, y_trn: np.ndarray, config: dict
-) -> Tuple[np.ndarray, np.ndarray]:
+def get_sampling(x_trn: XDataFrame, y_trn: AoS, config: dict) -> Tuple[AoD, AoS]:
     if config["model"]["sampling"]["name"] == "none":
         return x_trn, y_trn
 

@@ -9,8 +9,7 @@ USERDEFINE = 0
 OTHERS = 1
 
 
-def origin_checker(spec: importlib.machinery.ModuleSpec,
-                   prefix: str = "/app") -> int:
+def origin_checker(spec: importlib.machinery.ModuleSpec, prefix: str = "/app") -> int:
     origin: str = spec.origin  # type: ignore
     if origin.startswith(prefix):
         return USERDEFINE
@@ -43,4 +42,5 @@ if __name__ == "__main__":
     modules_list = import_collector(pytree)
 
     import pdb
+
     pdb.set_trace()

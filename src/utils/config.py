@@ -7,6 +7,18 @@ import yaml
 def _get_default() -> dict:
     cfg: Dict[str, Any] = dict()
 
+    # seed
+    cfg["seed_everything"] = dict()
+
+    # pre process
+    cfg["pre_process"] = dict()
+
+    # post process
+    cfg["post_process"] = dict()
+
+    # stacking
+    cfg["stacking"] = dict()
+
     # dataset
     cfg["dataset"] = dict()
     cfg["dataset"]["dir"] = "../input"
@@ -34,6 +46,8 @@ def _get_default() -> dict:
     cfg["model"] = dict()
     cfg["model"]["name"] = "lgbm"
     cfg["model"]["sampling"] = dict()
+    cfg["model"]["adaptive_learning_rate"] = dict()
+    cfg["model"]["focal_loss"] = dict()
     cfg["model"]["sampling"]["name"] = "none"
     cfg["model"]["sampling"]["params"] = dict()
     cfg["model"]["model_params"] = dict()
