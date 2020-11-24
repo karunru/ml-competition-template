@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 
 import cudf
 from src.utils import reduce_mem_usage, timer
+from src.validation import default_feature_selector
 
 
 class Feature(metaclass=abc.ABCMeta):
@@ -32,6 +33,11 @@ class Feature(metaclass=abc.ABCMeta):
     ):
         with timer(self.name, log=log):
             self.create_features(train_df, test_df=test_df)
+            with timer("feature selection"):
+                selector = default_feature_selector()
+                self.train = selector.fit_transform(self.train)
+                self.valid = selector.transform(self.valid)
+                self.test = selector.transform(self.train)
             prefix = self.prefix + "_" if self.prefix else ""
             suffix = self.suffix + "_" if self.suffix else ""
             self.train.columns = cudf.Index([str(c) for c in self.train.columns])
