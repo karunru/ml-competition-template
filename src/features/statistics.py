@@ -46,8 +46,7 @@ def range_per(x):
 #                                        shapiro.test(as.numeric(x))$statistic, NA) )}
 # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.shapiro.html
 def sw_stat(x):
-    return stats.shapiro(x)[0]
-
+    return stats.shapiro(x)[0] if len(x) > 3 else np.nan
 
 # x_diff <- function(x){ return(x - mean(x,na.rm=T)) }
 def x_diff(x):
