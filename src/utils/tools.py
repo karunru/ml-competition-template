@@ -1,15 +1,9 @@
 import logging
 
-import pandas as pd
-
-from xfeat import (
-    ConstantFeatureEliminator,
-    DuplicatedFeatureEliminator,
-    Pipeline,
-    SpearmanCorrelationEliminator,
-)
+from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
+                   Pipeline, SpearmanCorrelationEliminator)
 from xfeat.types import XDataFrame
-from xfeat.utils import compress_df, is_cudf
+from xfeat.utils import compress_df
 
 
 def reduce_mem_usage(
@@ -17,10 +11,7 @@ def reduce_mem_usage(
 ) -> XDataFrame:
     start_mem = df.memory_usage().sum() / 1024 ** 2
 
-    if is_cudf(df):
-        df = compress_df(df.to_pandas())
-    else:
-        df = compress_df(df)
+    df = compress_df(df)
 
     end_mem = df.memory_usage().sum() / 1024 ** 2
     reduction = (start_mem - end_mem) / start_mem

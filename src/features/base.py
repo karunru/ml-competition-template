@@ -3,14 +3,10 @@ import gc
 import inspect
 import logging
 from pathlib import Path
-from typing import Optional, Tuple, Union
-
-import pandas as pd
+from typing import Optional, Tuple
 
 import cudf
-from src.sampling import shrink_by_date_index
-from src.utils import load_pickle, reduce_mem_usage, save_pickle, timer
-from xfeat.types import XDataFrame
+from src.utils import reduce_mem_usage, timer
 
 
 class Feature(metaclass=abc.ABCMeta):
@@ -22,25 +18,25 @@ class Feature(metaclass=abc.ABCMeta):
     def __init__(self):
         self.name = self.__class__.__name__
         Path(self.save_dir).mkdir(exist_ok=True, parents=True)
-        self.train = pd.DataFrame()
-        self.valid = pd.DataFrame()
-        self.test = pd.DataFrame()
-        self.train_path = Path(self.save_dir) / f"{self.name}_train.pkl"
-        self.test_path = Path(self.save_dir) / f"{self.name}_test.pkl"
+        self.train = cudf.DataFrame()
+        self.valid = cudf.DataFrame()
+        self.test = cudf.DataFrame()
+        self.train_path = Path(self.save_dir) / f"{self.name}_train.ftr"
+        self.test_path = Path(self.save_dir) / f"{self.name}_test.ftr"
 
     def run(
         self,
-        train_df: XDataFrame,
-        test_df: Optional[XDataFrame] = None,
+        train_df: cudf.DataFrame,
+        test_df: Optional[cudf.DataFrame] = None,
         log: bool = False,
     ):
         with timer(self.name, log=log):
             self.create_features(train_df, test_df=test_df)
             prefix = self.prefix + "_" if self.prefix else ""
             suffix = self.suffix + "_" if self.suffix else ""
-            self.train.columns = pd.Index([str(c) for c in self.train.columns])
-            self.valid.columns = pd.Index([str(c) for c in self.valid.columns])
-            self.test.columns = pd.Index([str(c) for c in self.test.columns])
+            self.train.columns = cudf.Index([str(c) for c in self.train.columns])
+            self.valid.columns = cudf.Index([str(c) for c in self.valid.columns])
+            self.test.columns = cudf.Index([str(c) for c in self.test.columns])
             self.train.columns = prefix + self.train.columns + suffix
             self.valid.columns = prefix + self.valid.columns + suffix
             self.test.columns = prefix + self.test.columns + suffix
@@ -49,23 +45,14 @@ class Feature(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def create_features(
         self,
-        train_df: XDataFrame,
-        test_df: Optional[XDataFrame],
+        train_df: cudf.DataFrame,
+        test_df: Optional[cudf.DataFrame],
     ):
         raise NotImplementedError
 
     def save(self):
-        save_pickle(reduce_mem_usage(self.train), self.train_path)
-        save_pickle(reduce_mem_usage(self.test), self.test_path)
-
-
-class PartialFeature(metaclass=abc.ABCMeta):
-    def __init__(self):
-        self.df = pd.DataFrame
-
-    @abc.abstractmethod
-    def create_features(self, df: pd.DataFrame, test: bool = False):
-        raise NotImplementedError
+        reduce_mem_usage(self.train).to_feather(self.train_path)
+        reduce_mem_usage(self.test).to_feather(self.test_path)
 
 
 def is_feature(klass) -> bool:
@@ -79,11 +66,10 @@ def get_features(namespace: dict):
 
 
 def generate_features(
-    train_df: pd.DataFrame,
-    test_df: pd.DataFrame,
+    train_df: cudf.DataFrame,
+    test_df: cudf.DataFrame,
     namespace: dict,
     required: list,
-    use_cudf: bool,
     overwrite: bool,
     log: bool = False,
 ):
@@ -96,33 +82,31 @@ def generate_features(
             else:
                 logging.info(f"{f.name} was skipped")
         else:
-            if use_cudf:
-                f.run(cudf.from_pandas(train_df), cudf.from_pandas(test_df), log).save()
-            else:
-                f.run(train_df, test_df, log).save()
+            f.run(train_df, test_df, log).save()
+
             gc.collect()
 
 
-def load_features(config: dict) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
     feature_path = config["dataset"]["feature_dir"]
 
     with timer("load train"):
-        x_train = pd.concat(
+        x_train = cudf.concat(
             [
-                load_pickle(f"{feature_path}/{f}_train.pkl")
+                cudf.read_feather(f"{feature_path}/{f}_train.ftr")
                 for f in config["features"]
-                if Path(f"{feature_path}/{f}_train.pkl").exists()
+                if Path(f"{feature_path}/{f}_train.ftr").exists()
             ],
             axis=1,
             sort=False,
         )
 
     with timer("load test"):
-        x_test = pd.concat(
+        x_test = cudf.concat(
             [
-                load_pickle(f"{feature_path}/{f}_test.pkl")
+                cudf.read_feather(f"{feature_path}/{f}_test.ftr")
                 for f in config["features"]
-                if Path(f"{feature_path}/{f}_test.pkl").exists()
+                if Path(f"{feature_path}/{f}_test.ftr").exists()
             ],
             axis=1,
             sort=False,

@@ -81,15 +81,14 @@ if __name__ == "__main__":
 
     if (not feature_existence_checker(feature_dir, config["features"])) or args.force:
         with timer(name="load data"):
-            train = load_pickle(input_dir / "train_data.pkl")
-            test = load_pickle(input_dir / "test_data.pkl")
+            train = cudf.read_feather(input_dir / "train_data.ftr")
+            test = cudf.read_feather(input_dir / "test_data.ftr")
         with timer(name="generate features"):
             generate_features(
                 train_df=train,
                 test_df=test,
                 namespace=globals(),
                 required=config["features"],
-                use_cudf=True,
                 overwrite=args.force,
                 log=True,
             )
