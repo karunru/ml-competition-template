@@ -7,64 +7,40 @@ import warnings
 from pathlib import Path
 from typing import List
 
+import cudf
+import cupy as cp
 import lightgbm as lgb
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import rmm
 import seaborn as sns
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import MinMaxScaler
+from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
+                   SpearmanCorrelationEliminator)
 
-import cudf
-import cupy as cp
 from src.evaluation import calc_metric, pr_auc
-from src.features import (
-    Basic,
-    BasicOld,
-    ConcatCategory,
-    HandMade,
-    LatLon,
-    MergePublishedLandPrice,
-    MergePublishedLandPricePred,
-    MultipleNumerical,
-    PublishedLandPriceTrainTest,
-    TargetEncoding,
-    generate_features,
-    load_features,
-)
+from src.features import (Basic, BasicOld, ConcatCategory, HandMade, LatLon,
+                          MergePublishedLandPrice, MergePublishedLandPricePred,
+                          MultipleNumerical, PublishedLandPriceTrainTest,
+                          TargetEncoding, generate_features, load_features)
 from src.models import get_model
-from src.utils import (
-    configure_logger,
-    default_feature_selector,
-    delete_duplicated_columns,
-    feature_existence_checker,
-    get_preprocess_parser,
-    load_config,
-    load_pickle,
-    make_submission,
-    merge_by_concat,
-    plot_feature_importance,
-    reduce_mem_usage,
-    save_json,
-    save_pickle,
-    seed_everything,
-    slack_notify,
-    timer,
-)
-from src.validation import (
-    get_validation,
-    remove_correlated_features,
-    remove_ks_features,
-    select_features,
-)
-from xfeat import (
-    ConstantFeatureEliminator,
-    DuplicatedFeatureEliminator,
-    SpearmanCorrelationEliminator,
-)
+from src.utils import (configure_logger, default_feature_selector,
+                       delete_duplicated_columns, feature_existence_checker,
+                       get_preprocess_parser, load_config, load_pickle,
+                       make_submission, merge_by_concat,
+                       plot_feature_importance, reduce_mem_usage, save_json,
+                       save_pickle, seed_everything, slack_notify, timer)
+from src.validation import (get_validation, remove_correlated_features,
+                            remove_ks_features, select_features)
 
 if __name__ == "__main__":
+    # Set RMM to allocate all memory as managed memory (cudaMallocManaged underlying allocator)
+    rmm.reinitialize(managed_memory=True)
+    assert rmm.is_initialized()
+
     sys.path.append("./")
 
     pool = cp.cuda.MemoryPool(cp.cuda.malloc_managed)
