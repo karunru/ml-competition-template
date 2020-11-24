@@ -1,7 +1,5 @@
 import logging
 
-from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
-                   Pipeline, SpearmanCorrelationEliminator)
 from xfeat.types import XDataFrame
 from xfeat.utils import compress_df
 
@@ -28,12 +26,3 @@ def reduce_mem_usage(
 
     return df
 
-
-def default_feature_selector():
-    return Pipeline(
-        [
-            DuplicatedFeatureEliminator(),
-            ConstantFeatureEliminator(),
-            SpearmanCorrelationEliminator(threshold=0.9),
-        ]
-    )

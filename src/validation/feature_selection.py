@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import ks_2samp
 from tqdm import tqdm
+from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
+                   Pipeline, SpearmanCorrelationEliminator)
 
 
 def select_features(
@@ -85,3 +87,13 @@ def select_features_by_shift_day(cols: List[str], day: int) -> List[str]:
     use_shift_cols = [col for col in shift_cols if _get_shift_day(col) >= day]
 
     return use_shift_cols + not_shift_cols
+
+
+def default_feature_selector():
+    return Pipeline(
+        [
+            DuplicatedFeatureEliminator(),
+            ConstantFeatureEliminator(),
+            SpearmanCorrelationEliminator(threshold=0.9),
+        ]
+    )
