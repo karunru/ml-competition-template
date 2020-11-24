@@ -1,12 +1,15 @@
 import itertools
 from typing import Dict, List, Union
 
+import cudf
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import KFold, StratifiedKFold
-
+from src.utils import timer
+from tqdm import tqdm
+from xfeat.utils import is_cudf
 
 """https://github.com/okotaku/pet_finder/blob/master/code/all_tools.py
 """
@@ -36,24 +39,31 @@ class GroupbyTransformer:
         return key, var, agg, on
 
     def _aggregate(self, dataframe):
-        self.features = []
-        for param_dict in self.param_dict:
-            key, var, agg, on = self._get_params(param_dict)
-            all_features = list(set(key + var))
-            new_features = self._get_feature_names(key, var, agg)
-            features = dataframe[all_features].groupby(key)[var].agg(agg).reset_index()
-            features.columns = key + new_features
-            self.features.append(features)
+        with timer("aggregate"):
+            self.features = []
+            for param_dict in tqdm(self.param_dict):
+                key, var, agg, on = self._get_params(param_dict)
+                all_features = list(set(key + var))
+                new_features = self._get_feature_names(key, var, agg)
+                features = dataframe[all_features].groupby(key)[var].agg(agg).reset_index()
+                features.columns = key + new_features
+                self.features.append(features)
         return self
 
     def _merge(self, dataframe, merge=True):
-        for param_dict, features in zip(self.param_dict, self.features):
-            key, var, agg, on = self._get_params(param_dict)
-            if merge:
-                dataframe = dataframe.merge(features, how="left", on=on)
-            else:
-                new_features = self._get_feature_names(key, var, agg)
-                dataframe = pd.concat([dataframe, features[new_features]], axis=1)
+        with timer("merge"):
+            for param_dict, features in tqdm(
+                zip(self.param_dict, self.features), total=len(self.features)
+            ):
+                key, var, agg, on = self._get_params(param_dict)
+                if merge:
+                    if is_cudf(dataframe):
+                        dataframe = cudf.merge(dataframe, features, how="left", on=on)
+                    else:
+                        dataframe = dataframe.merge(features, how="left", on=on)
+                else:
+                    new_features = self._get_feature_names(key, var, agg)
+                    dataframe = pd.concat([dataframe, features[new_features]], axis=1)
         return dataframe
 
     def transform(self, dataframe):
@@ -98,6 +108,7 @@ class DiffGroupbyTransformer(GroupbyTransformer):
                     else:
                         new_feature = "_".join(["diff", a, v, "groupby"] + key)
                         base_feature = "_".join([a, v, "groupby"] + key)
+                    print(new_feature)
                     dataframe[new_feature] = dataframe[base_feature] - dataframe[v]
         return dataframe
 
@@ -131,6 +142,7 @@ class RatioGroupbyTransformer(GroupbyTransformer):
                     else:
                         new_feature = "_".join(["ratio", a, v, "groupby"] + key)
                         base_feature = "_".join([a, v, "groupby"] + key)
+                    print(new_feature)
                     dataframe[new_feature] = dataframe[v] / dataframe[base_feature]
         return dataframe
 

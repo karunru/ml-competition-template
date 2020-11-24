@@ -6,9 +6,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib_venn import venn2
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sklearn.metrics import confusion_matrix
 from sklearn.utils.multiclass import unique_labels
+from xfeat.types import XDataFrame
+from xfeat.utils import is_cudf
+
+
+def plot_venn2(
+    df1: XDataFrame,
+    df2: XDataFrame,
+    col: str,
+    df1_name: str = "train",
+    df2_name: str = "test",
+):
+    set1 = set(df1[col].unique().to_pandas()) if is_cudf(df1) else set(df1[col].unique())
+    set2 = set(df2[col].unique().to_pandas()) if is_cudf(df2) else set(df2[col].unique())
+
+    venn2([set1, set2], (df1_name, df2_name))
+    plt.title(col)
+    plt.show()
+
+    return set1, set2
 
 
 def plot_feature_importance(

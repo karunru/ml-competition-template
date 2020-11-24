@@ -63,53 +63,7 @@ class BaseModel(object):
     ) -> Tuple[
         np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
     ]:
-        if target_scaler is not None:
-            _y_train = target_scaler.inverse_transform(y_train.reshape(-1, 1)).reshape(
-                -1
-            )
-            _oof_preds = target_scaler.inverse_transform(
-                oof_preds.reshape(-1, 1)
-            ).reshape(-1)
-            _test_preds = target_scaler.inverse_transform(
-                test_preds.reshape(-1, 1)
-            ).reshape(-1)
-        else:
-            _y_train = np.copy(y_train)
-            _oof_preds = np.copy(oof_preds)
-            _test_preds = np.copy(test_preds)
-
-        _y_train = np.expm1(_y_train)
-        _oof_preds = np.expm1(_oof_preds)
-        _test_preds = np.expm1(_test_preds)
-
-        if y_valid is not None:
-            _y_valid = np.expm1(y_valid)
-        else:
-            _y_valid = None
-
-        if valid_preds is not None:
-            _valid_preds = np.expm1(valid_preds)
-        else:
-            _valid_preds = None
-
-        if config["post_process"]["do"]:
-            col = config["post_process"]["col"]
-            _oof_preds = oof_preds * train_features[col]
-            _y_train = _y_train * train_features[col]
-            _test_preds = _test_preds * test_features[col]
-            if _y_valid is not None:
-                _y_valid = _y_valid * valid_features[col]
-            if _valid_preds is not None:
-                _valid_preds = _valid_preds * valid_features[col]
-
-        # 負の値があるとprobspaceのsubmitでエラーになるので
-        _oof_preds[_oof_preds < 0] = 0
-        _test_preds[_test_preds < 0] = 0
-        if _valid_preds is not None:
-            _valid_preds[_valid_preds < 0] = 0
-
-        return _y_train, _oof_preds, _test_preds, _y_valid, _valid_preds
-        # return y_train, oof_preds, test_preds, y_valid, valid_preds
+        return y_train, oof_preds, test_preds, y_valid, valid_preds
 
     def cv(
         self,

@@ -61,11 +61,13 @@ class XGBoost(BaseModel):
         for col in features.select_dtypes(include="category").columns:
             features[col] = features[col].cat.codes
 
-        if self.mode != "multiclass":
-            return model.predict(features.values, ntree_limit=model.best_ntree_limit)
-        else:
+        if self.mode == "multiclass":
             preds = model.predict_proba(features, ntree_limit=model.best_ntree_limit)
             return preds @ np.arange(4) / 3
+        elif self.mode == "binary":
+            return model.predict_proba(features, ntree_limit=model.best_ntree_limit)[:, 1]
+        else:
+            model.predict(features.values, ntree_limit=model.best_ntree_limit)
 
     def get_feature_importance(self, model: XGBModel) -> np.ndarray:
         return model.feature_importances_

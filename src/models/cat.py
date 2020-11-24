@@ -3,7 +3,6 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from catboost import CatBoostClassifier, CatBoostRegressor
-
 from xfeat.types import XDataFrame, XSeries
 
 from .base import BaseModel
@@ -25,6 +24,7 @@ class CatBoost(BaseModel):
     ) -> Tuple[CatModel, dict]:
         model_params = config["model"]["model_params"]
         mode = config["model"]["train_params"]["mode"]
+        self.mode = mode
         categorical_cols = x_train.select_dtypes(include="category").columns
 
         if mode == "regression":
@@ -50,7 +50,10 @@ class CatBoost(BaseModel):
         self, model: CatModel, features: Union[pd.DataFrame, np.ndarray]
     ) -> np.ndarray:
         # if model.get_param("loss_function")
-        return model.predict(features.values)
+        if self.mode == "binary":
+            return model.predict_proba(features.values)[:, 1]
+        else:
+            return model.predict(features.values)
 
     def get_feature_importance(self, model: CatModel) -> np.ndarray:
         return model.feature_importances_

@@ -85,15 +85,9 @@ def random_under_sample(
     params = config["model"]["sampling"]["params"]
     acc_0 = (y_trn == 0).sum().astype(int)
     acc_1 = (y_trn == 1).sum().astype(int)
-    acc_2 = (y_trn == 2).sum().astype(int)
-    acc_3 = (y_trn == 3).sum().astype(int)
+
     rus = RandomUnderSampler(
-        {
-            0: int(params["acc_0_coef"] * acc_0),
-            1: int(params["acc_1_coef"] * acc_1),
-            2: int(params["acc_2_coef"] * acc_2),
-            3: int(params["acc_3_coef"] * acc_3),
-        },
+        acc_1 / acc_0,
         random_state=params["random_state"],
     )
     sampled_x, sampled_y = rus.fit_resample(x_trn, y_trn)
