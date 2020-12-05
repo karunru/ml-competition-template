@@ -23,3 +23,10 @@ touch notebooks/.gitkeep
 touch others/.gitkeep
 touch output/.gitkeep
 touch log/.gitkeep
+
+# idea settings
+project_name=$(basename `pwd`)
+cp -r ../ml-competition-template/.idea ./
+mv .idea/ml-competition-template.iml .idea/"${project_name}.iml"
+sed -i -e "s/ml\-competition\-template/${project_name}/g" .idea/modules.xml
+sed -i -e "s/ml\-competition\-template/${project_name}/g" .idea/deployment.xml

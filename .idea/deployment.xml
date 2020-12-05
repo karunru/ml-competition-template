@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="karunru@172.22.1.33:22" remoteFilesAllowedToDisappearOnAutoupload="false">
+    <serverData>
+      <paths name="karunru@172.22.1.33:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/karunru/Home/Kaggle/ml-competition-template" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>
