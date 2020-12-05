@@ -3,6 +3,7 @@ import random
 from collections import Counter, defaultdict
 from typing import List, Tuple
 
+import cudf
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
@@ -147,7 +148,7 @@ def stratified_kfold(
         n_splits=params["n_splits"], random_state=params["random_state"], shuffle=True
     )
 
-    y = np.array(df[params["target"]])
+    y = df[params["target"]].to_array() if isinstance(df, cudf.DataFrame) else np.array(df[params["target"]])
     X_col = [col for col in df.columns.to_list() if col is not params["target"]]
     split = []
     for trn_idx, val_idx in skf.split(df[X_col], y):

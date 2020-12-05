@@ -103,37 +103,43 @@ class BaseModel(object):
             y_valid = y_valid.values if isinstance(y_valid, pd.Series) else y_valid
 
         for i_fold, (trn_idx, val_idx) in enumerate(folds_ids):
-            self.fold = i_fold
-            # get train data and valid data
-            x_trn = X_train.iloc[trn_idx]
-            y_trn = y[trn_idx]
-            x_val = X_train.iloc[val_idx]
-            y_val = y[val_idx]
+            with timer(f"fold {i_fold}"):
+                self.fold = i_fold
+                with timer("get train data and valid data"):
+                    # get train data and valid data
+                    x_trn = X_train.iloc[trn_idx]
+                    y_trn = y[trn_idx]
+                    x_val = X_train.iloc[val_idx]
+                    y_val = y[val_idx]
 
-            x_trn, y_trn = get_sampling(x_trn, y_trn, config)
+                with timer("get sampling"):
+                    x_trn, y_trn = get_sampling(x_trn, y_trn, config)
 
-            # train model
-            model, best_score = self.fit(x_trn, y_trn, x_val, y_val, config)
-            cv_score_list.append(best_score)
-            models.append(model)
-            best_iteration += self.get_best_iteration(model) / len(folds_ids)
+                with timer("train model"):
+                    # train model
+                    model, best_score = self.fit(x_trn, y_trn, x_val, y_val, config)
+                    cv_score_list.append(best_score)
+                    models.append(model)
+                    best_iteration += self.get_best_iteration(model) / len(folds_ids)
 
-            # predict oof and test
-            oof_preds[val_idx] = self.predict(model, x_val).reshape(-1)
-            test_preds += self.predict(model, X_test).reshape(-1) / len(folds_ids)
+                with timer("predict oof and test"):
+                    # predict oof and test
+                    oof_preds[val_idx] = self.predict(model, x_val).reshape(-1)
+                    test_preds += self.predict(model, X_test).reshape(-1) / len(folds_ids)
 
-            if valid_exists:
-                valid_preds += self.predict(model, valid_features).reshape(-1) / len(
-                    folds_ids
-                )
+                    if valid_exists:
+                        valid_preds += self.predict(model, valid_features).reshape(-1) / len(
+                            folds_ids
+                        )
 
-            # get feature importances
-            importances_tmp = pd.DataFrame(
-                self.get_feature_importance(model),
-                columns=[f"gain_{i_fold+1}"],
-                index=feature_name,
-            )
-            importances = importances.join(importances_tmp, how="inner")
+                with timer("get feature importance"):
+                    # get feature importances
+                    importances_tmp = pd.DataFrame(
+                        self.get_feature_importance(model),
+                        columns=[f"gain_{i_fold+1}"],
+                        index=feature_name,
+                    )
+                    importances = importances.join(importances_tmp, how="inner")
 
         # summary of feature importance
         feature_importance = importances.mean(axis=1)

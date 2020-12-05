@@ -6,8 +6,13 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import cudf
+import pandas as pd
 from src.utils import reduce_mem_usage, timer
 from src.validation import default_feature_selector
+from src.validation.feature_selection import \
+    KarunruSpearmanCorrelationEliminator
+from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
+                   SpearmanCorrelationEliminator)
 
 
 class Feature(metaclass=abc.ABCMeta):
@@ -34,15 +39,31 @@ class Feature(metaclass=abc.ABCMeta):
         with timer(self.name, log=log):
             self.create_features(train_df, test_df=test_df)
             with timer("feature selection"):
-                selector = default_feature_selector()
-                self.train = selector.fit_transform(self.train)
-                self.valid = selector.transform(self.valid)
-                self.test = selector.transform(self.train)
+                with timer("ConstantFeatureEliminator"):
+                    selector = ConstantFeatureEliminator()
+                    self.train = selector.fit_transform(self.train)
+                    selector._selected_cols = [
+                        col for col in selector._selected_cols if col != "target"
+                    ]
+                    self.test = selector.transform(self.test)
+                with timer("KarunruSpearmanCorrelationEliminator"):
+                    selector = KarunruSpearmanCorrelationEliminator()
+                    self.train = selector.fit_transform(self.train)
+                    selector._selected_cols = [
+                        col for col in selector._selected_cols if col != "target"
+                    ]
+                    self.test = selector.transform(self.test)
             prefix = self.prefix + "_" if self.prefix else ""
             suffix = self.suffix + "_" if self.suffix else ""
-            self.train.columns = cudf.Index([str(c) for c in self.train.columns])
-            self.valid.columns = cudf.Index([str(c) for c in self.valid.columns])
-            self.test.columns = cudf.Index([str(c) for c in self.test.columns])
+            self.train.columns = cudf.Index(
+                [str(c) for c in self.train.columns]
+            ).to_array()
+            self.valid.columns = cudf.Index(
+                [str(c) for c in self.valid.columns]
+            ).to_array()
+            self.test.columns = cudf.Index(
+                [str(c) for c in self.test.columns]
+            ).to_array()
             self.train.columns = prefix + self.train.columns + suffix
             self.valid.columns = prefix + self.valid.columns + suffix
             self.test.columns = prefix + self.test.columns + suffix
@@ -105,7 +126,16 @@ def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
             ],
             axis=1,
             sort=False,
-        )
+        ).to_pandas()
+        # x_train = pd.concat(
+        #     [
+        #         pd.read_feather(f"{feature_path}/{f}_train.ftr")
+        #         for f in config["features"]
+        #         if Path(f"{feature_path}/{f}_train.ftr").exists()
+        #     ],
+        #     axis=1,
+        #     sort=False,
+        # )
 
     with timer("load test"):
         x_test = cudf.concat(
@@ -116,6 +146,15 @@ def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
             ],
             axis=1,
             sort=False,
-        )
+        ).to_pandas()
+        # x_test = pd.concat(
+        #     [
+        #         pd.read_feather(f"{feature_path}/{f}_test.ftr")
+        #         for f in config["features"]
+        #         if Path(f"{feature_path}/{f}_test.ftr").exists()
+        #     ],
+        #     axis=1,
+        #     sort=False,
+        # )
 
     return x_train, x_test

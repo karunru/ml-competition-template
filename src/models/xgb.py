@@ -3,7 +3,6 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-
 from xfeat.types import XDataFrame, XSeries
 
 from .base import BaseModel
@@ -65,7 +64,9 @@ class XGBoost(BaseModel):
             preds = model.predict_proba(features, ntree_limit=model.best_ntree_limit)
             return preds @ np.arange(4) / 3
         elif self.mode == "binary":
-            return model.predict_proba(features, ntree_limit=model.best_ntree_limit)[:, 1]
+            return model.predict_proba(features, ntree_limit=model.best_ntree_limit)[
+                :, 1
+            ]
         else:
             model.predict(features.values, ntree_limit=model.best_ntree_limit)
 

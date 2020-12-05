@@ -3,7 +3,6 @@ from typing import Union
 import numpy as np
 from sklearn.metrics import average_precision_score, mean_squared_error
 
-
 def pr_auc(y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]) -> float:
     return average_precision_score(y_true, y_pred)
 
@@ -44,7 +43,7 @@ def qwk(
 def calc_metric(
     y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]
 ) -> float:
-    return qwk(y_true, y_pred)
+    return pr_auc(y_true, y_pred)
 
 
 if __name__ == "__main__":
