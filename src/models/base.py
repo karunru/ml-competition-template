@@ -6,13 +6,14 @@ from typing import Dict, List, Optional, Tuple, Union
 import catboost as cat
 import numpy as np
 import pandas as pd
+from cuml.preprocessing.TargetEncoder import TargetEncoder
 from sklearn.preprocessing import MinMaxScaler
-
-import lightgbm as lgb
 from src.evaluation import calc_metric
 from src.sampling import get_sampling
 from src.utils import timer
 from xfeat.types import XDataFrame, XSeries
+
+import lightgbm as lgb
 
 # type alias
 AoD = Union[np.ndarray, XDataFrame]
@@ -63,7 +64,13 @@ class BaseModel(object):
     ) -> Tuple[
         np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
     ]:
-        return y_train, oof_preds, test_preds, y_valid, valid_preds
+        return (
+            np.expm1(y_train),
+            np.expm1(oof_preds),
+            np.expm1(test_preds),
+            np.expm1(y_valid) if y_valid is not None else None,
+            np.expm1(valid_preds) if y_valid is not None else None,
+        )
 
     def cv(
         self,
@@ -88,7 +95,6 @@ class BaseModel(object):
             valid_preds = np.zeros(len(valid_features))
         else:
             valid_preds = None
-        importances = pd.DataFrame(index=feature_name)
         best_iteration = 0.0
         cv_score_list: List[dict] = []
         models: List[Model] = []
@@ -102,6 +108,17 @@ class BaseModel(object):
             y = y_train.values if isinstance(y_train, pd.Series) else y_train
             y_valid = y_valid.values if isinstance(y_valid, pd.Series) else y_valid
 
+        if config["target_encoding"]:
+            with timer("target encoding for test"):
+                cat_cols = config["categorical_cols"]
+                for cat_col in cat_cols:
+                    encoder = TargetEncoder(n_folds=4, smooth=0.3)
+                    encoder.fit(X_train[cat_col], y)
+                    X_test[cat_col + "_TE"] = encoder.transform(X_test[cat_col])
+                    feature_name.append((cat_col + "_TE"))
+
+        importances = pd.DataFrame(index=feature_name)
+
         for i_fold, (trn_idx, val_idx) in enumerate(folds_ids):
             with timer(f"fold {i_fold}"):
                 self.fold = i_fold
@@ -111,6 +128,21 @@ class BaseModel(object):
                     y_trn = y[trn_idx]
                     x_val = X_train.iloc[val_idx]
                     y_val = y[val_idx]
+
+                if config["target_encoding"]:
+                    with timer("target encoding"):
+                        cat_cols = config["categorical_cols"]
+                        for cat_col in cat_cols:
+                            encoder = TargetEncoder(n_folds=4, smooth=0.3)
+                            x_trn[cat_col + "_TE"] = encoder.fit_transform(
+                                x_trn[cat_col], y_trn
+                            )
+                            x_val[cat_col + "_TE"] = encoder.transform(x_val[cat_col])
+
+                logging.info(
+                    f"train size: {x_trn.shape}, valid size: {x_val.shape}"
+                )
+                print(f"train size: {x_trn.shape}, valid size: {x_val.shape}")
 
                 with timer("get sampling"):
                     x_trn, y_trn = get_sampling(x_trn, y_trn, config)
@@ -125,12 +157,14 @@ class BaseModel(object):
                 with timer("predict oof and test"):
                     # predict oof and test
                     oof_preds[val_idx] = self.predict(model, x_val).reshape(-1)
-                    test_preds += self.predict(model, X_test).reshape(-1) / len(folds_ids)
+                    test_preds += self.predict(model, X_test).reshape(-1) / len(
+                        folds_ids
+                    )
 
                     if valid_exists:
-                        valid_preds += self.predict(model, valid_features).reshape(-1) / len(
-                            folds_ids
-                        )
+                        valid_preds += self.predict(model, valid_features).reshape(
+                            -1
+                        ) / len(folds_ids)
 
                 with timer("get feature importance"):
                     # get feature importances

@@ -6,13 +6,12 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import cudf
-import pandas as pd
+import numpy as np
 from src.utils import reduce_mem_usage, timer
-from src.validation import default_feature_selector
-from src.validation.feature_selection import \
-    KarunruSpearmanCorrelationEliminator
-from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
-                   SpearmanCorrelationEliminator)
+from src.validation.feature_selection import (
+    KarunruSpearmanCorrelationEliminator,
+    KarunruConstantFeatureEliminator,
+)
 
 
 class Feature(metaclass=abc.ABCMeta):
@@ -39,18 +38,25 @@ class Feature(metaclass=abc.ABCMeta):
         with timer(self.name, log=log):
             self.create_features(train_df, test_df=test_df)
             with timer("feature selection"):
+                target_cols = [
+                    "NA_Sales",
+                    "EU_Sales",
+                    "JP_Sales",
+                    "Other_Sales",
+                    "Global_Sales",
+                ]
                 with timer("ConstantFeatureEliminator"):
-                    selector = ConstantFeatureEliminator()
+                    selector = KarunruConstantFeatureEliminator()
                     self.train = selector.fit_transform(self.train)
                     selector._selected_cols = [
-                        col for col in selector._selected_cols if col != "target"
+                        col for col in selector._selected_cols if col not in target_cols
                     ]
                     self.test = selector.transform(self.test)
                 with timer("KarunruSpearmanCorrelationEliminator"):
                     selector = KarunruSpearmanCorrelationEliminator()
                     self.train = selector.fit_transform(self.train)
                     selector._selected_cols = [
-                        col for col in selector._selected_cols if col != "target"
+                        col for col in selector._selected_cols if col not in target_cols
                     ]
                     self.test = selector.transform(self.test)
             prefix = self.prefix + "_" if self.prefix else ""
@@ -118,15 +124,21 @@ def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
     feature_path = config["dataset"]["feature_dir"]
 
     with timer("load train"):
+        train_feats = [
+            cudf.read_feather(f"{feature_path}/{f}_train.ftr")
+            for f in config["features"]
+            if Path(f"{feature_path}/{f}_train.ftr").exists()
+        ]
+        cols = []
+        for feats in train_feats:
+            cols = cols + feats.columns.tolist()
+
+        assert len(cols) == len(np.unique(cols))
         x_train = cudf.concat(
-            [
-                cudf.read_feather(f"{feature_path}/{f}_train.ftr")
-                for f in config["features"]
-                if Path(f"{feature_path}/{f}_train.ftr").exists()
-            ],
+            train_feats,
             axis=1,
             sort=False,
-        ).to_pandas()
+        )
         # x_train = pd.concat(
         #     [
         #         pd.read_feather(f"{feature_path}/{f}_train.ftr")
@@ -146,7 +158,7 @@ def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
             ],
             axis=1,
             sort=False,
-        ).to_pandas()
+        )
         # x_test = pd.concat(
         #     [
         #         pd.read_feather(f"{feature_path}/{f}_test.ftr")

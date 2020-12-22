@@ -10,6 +10,6 @@ def make_submission(test: np.ndarray, submission: pd.DataFrame) -> pd.DataFrame:
         print(f"len(sample submission) = {len(submission)}, len(test) = {len(test)}")
         raise AssertionError
 
-    submission["target"] = test
+    submission["Global_Sales"] = test
 
     return submission

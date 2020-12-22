@@ -1,6 +1,6 @@
 import sys
 
-import pandas as pd
+import cudf
 import yaml
 
 if __name__ == "__main__":
@@ -14,19 +14,13 @@ if __name__ == "__main__":
 
     target = config["target"]
     input_extension = config["input_extension"]
-    output_extension = config["output_extension"]
     input_dir = config["input_dir"]
     output_dir = config["output_dir"]
-
-    use_float16 = True
-    if output_extension == "ftr":
-        use_float16 = False
 
     for t in target:
         print("convert ", t)
         (
             tools.reduce_mem_usage(
-                pd.read_csv(input_dir + t + "." + input_extension, encoding="utf-8"),
-                use_float16=use_float16,
+                cudf.read_csv(input_dir + t + "." + input_extension, encoding="utf-8")
             )
-        ).to_feather(output_dir + t + "." + output_extension)
+        ).to_feather(output_dir + t + ".ftr")

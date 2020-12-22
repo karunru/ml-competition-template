@@ -35,6 +35,12 @@ def _get_default() -> dict:
     cfg["feature_engineering"]["sampling"]["train"] = dict()
     cfg["feature_engineering"]["sampling"]["train"]["params"] = dict()
 
+    # feature selection
+    cfg["feature_selection"] = dict()
+    cfg["feature_selection"]["SpearmanCorrelation"] = dict()
+    cfg["feature_selection"]["top_k"] = dict()
+
+
     # adversarial validation
     cfg["av"] = dict()
     cfg["av"]["params"] = dict()

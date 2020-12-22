@@ -68,7 +68,7 @@ class XGBoost(BaseModel):
                 :, 1
             ]
         else:
-            model.predict(features.values, ntree_limit=model.best_ntree_limit)
+            return model.predict(features.values, ntree_limit=model.best_ntree_limit)
 
     def get_feature_importance(self, model: XGBModel) -> np.ndarray:
         return model.feature_importances_

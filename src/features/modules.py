@@ -9,6 +9,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.model_selection import KFold, StratifiedKFold
 from src.utils import timer
 from tqdm import tqdm
+from xfeat.types import XDataFrame
 from xfeat.utils import is_cudf
 
 """https://github.com/okotaku/pet_finder/blob/master/code/all_tools.py
@@ -45,7 +46,9 @@ class GroupbyTransformer:
                 key, var, agg, on = self._get_params(param_dict)
                 all_features = list(set(key + var))
                 new_features = self._get_feature_names(key, var, agg)
-                features = dataframe[all_features].groupby(key)[var].agg(agg).reset_index()
+                features = (
+                    dataframe[all_features].groupby(key)[var].agg(agg).reset_index()
+                )
                 features.columns = key + new_features
                 self.features.append(features)
         return self
@@ -165,15 +168,16 @@ class CategoryVectorizer:
         transformer=LatentDirichletAllocation(),
         name="CountLDA",
     ):
-        self.categorical_columns = categorical_columns
-        self.n_components = n_components
+        self.categorical_columns: List[str] = categorical_columns
+        self.n_components: int = n_components
         self.vectorizer = vectorizer
         self.transformer = transformer
-        self.name = name + str(self.n_components)
+        self.name: str = name + str(self.n_components)
+        self.columns: List[str] = []
 
-    def transform(self, dataframe):
+    def transform(self, dataframe: XDataFrame) -> XDataFrame:
         features = []
-        for (col1, col2) in self.get_column_pairs():
+        for (col1, col2) in tqdm(self.get_column_pairs()):
             try:
                 sentence = self.create_word_list(dataframe, col1, col2)
                 sentence = self.vectorizer.fit_transform(sentence)
@@ -184,34 +188,43 @@ class CategoryVectorizer:
                 features.append(feature)
             except Exception:
                 pass
-        features = pd.concat(features, axis=1)
+
+        features = (
+            pd.concat(features, axis=1)
+            if isinstance(dataframe, pd.DataFrame)
+            else cudf.concat(features, axis=1)
+        )
         return features
 
-    def create_word_list(self, dataframe, col1, col2):
-        col1_size = int(dataframe[col1].values.max() + 1)
+    def create_word_list(self, dataframe, col1, col2) -> List:
+        col1_size = int(dataframe[col1].max() + 1)
         col2_list = [[] for _ in range(col1_size)]
-        for val1, val2 in zip(dataframe[col1].values, dataframe[col2].values):
+        for val1, val2 in zip(dataframe[col1].to_array(), dataframe[col2].to_array()):
             col2_list[int(val1)].append(col2 + str(val2))
         return [" ".join(map(str, ls)) for ls in col2_list]
 
-    def get_feature(self, dataframe, col1, col2, latent_vector, name=""):
+    def get_feature(self, dataframe, col1, col2, latent_vector, name="") -> XDataFrame:
         features = np.zeros(shape=(len(dataframe), self.n_components), dtype=np.float32)
         self.columns = [
             "_".join([name, col1, col2, str(i)]) for i in range(self.n_components)
         ]
-        for i, val1 in enumerate(dataframe[col1]):
+        for i, val1 in enumerate(dataframe[col1].to_pandas().fillna(0).astype(int)):
             features[i, : self.n_components] = latent_vector[val1]
 
-        return pd.DataFrame(data=features, columns=self.columns)
+        return (
+            pd.DataFrame(data=features, columns=self.columns)
+            if isinstance(dataframe, pd.DataFrame)
+            else cudf.DataFrame(data=features, columns=self.columns)
+        )
 
-    def get_column_pairs(self):
+    def get_column_pairs(self) -> List[tuple]:
         return [
             (col1, col2)
             for col1, col2 in itertools.product(self.categorical_columns, repeat=2)
             if col1 != col2
         ]
 
-    def get_numerical_features(self):
+    def get_numerical_features(self) -> List:
         return self.columns
 
 

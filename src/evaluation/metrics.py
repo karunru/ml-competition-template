@@ -43,7 +43,7 @@ def qwk(
 def calc_metric(
     y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]
 ) -> float:
-    return pr_auc(y_true, y_pred)
+    return rmsle(y_true, y_pred)
 
 
 if __name__ == "__main__":

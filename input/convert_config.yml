@@ -1,12 +1,8 @@
 target:
   - "train"
   - "test"
-  - "fitting"
-  - "fitting__fixed"
-  - "atmaCup5__sample_submission"
 
 input_extension: "csv"
-output_extension: "pkl"
 
-input_dir: "input/atma-cup5/"
-output_dir: "input/atma-cup5/"
+input_dir: "input/"
+output_dir: "input/"

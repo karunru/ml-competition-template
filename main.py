@@ -18,23 +18,57 @@ import seaborn as sns
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import MinMaxScaler
-from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
-                   SpearmanCorrelationEliminator)
+from xfeat import (
+    ConstantFeatureEliminator,
+    DuplicatedFeatureEliminator,
+    SpearmanCorrelationEliminator,
+)
 
 from src.evaluation import calc_metric, pr_auc
-from src.features import (Basic, BasicOld, ConcatCategory, HandMade, LatLon,
-                          MergePublishedLandPrice, MergePublishedLandPricePred,
-                          MultipleNumerical, PublishedLandPriceTrainTest,
-                          TargetEncoding, generate_features, load_features)
+from src.features import (
+    AggSubTargetGroupbyTarget,
+    Basic,
+    CategoryVectorization,
+    ConcatCategory,
+    GroupbyConcatCat,
+    GroupbyDeveloper,
+    GroupbyGenre,
+    GroupbyName,
+    GroupbyPlatform,
+    GroupbyPublisher,
+    GroupbyRating,
+    GroupbyYear,
+    generate_features,
+    SerialNumPer,
+    load_features,
+)
 from src.models import get_model
-from src.utils import (configure_logger, default_feature_selector,
-                       delete_duplicated_columns, feature_existence_checker,
-                       get_preprocess_parser, load_config, load_pickle,
-                       make_submission, merge_by_concat,
-                       plot_feature_importance, reduce_mem_usage, save_json,
-                       save_pickle, seed_everything, slack_notify, timer)
-from src.validation import (get_validation, remove_correlated_features,
-                            remove_ks_features, select_features)
+from src.utils import (
+    configure_logger,
+    delete_duplicated_columns,
+    feature_existence_checker,
+    get_preprocess_parser,
+    load_config,
+    load_pickle,
+    make_submission,
+    merge_by_concat,
+    plot_feature_importance,
+    reduce_mem_usage,
+    save_json,
+    save_pickle,
+    seed_everything,
+    slack_notify,
+    timer,
+)
+from src.validation import (
+    KarunruSpearmanCorrelationEliminator,
+    default_feature_selector,
+    get_validation,
+    remove_correlated_features,
+    remove_ks_features,
+    select_top_k_features,
+)
+from src.validation.feature_selection import KarunruConstantFeatureEliminator
 
 if __name__ == "__main__":
     # Set RMM to allocate all memory as managed memory (cudaMallocManaged underlying allocator)
@@ -81,8 +115,10 @@ if __name__ == "__main__":
 
     if (not feature_existence_checker(feature_dir, config["features"])) or args.force:
         with timer(name="load data"):
-            train = cudf.read_feather(input_dir / "train_data.ftr")
-            test = cudf.read_feather(input_dir / "test_data.ftr")
+            train = cudf.read_feather(feature_dir / "Basic_train.ftr")
+            test = cudf.read_feather(feature_dir / "Basic_test.ftr")
+            # train = cudf.read_feather(input_dir / "train.ftr")
+            # test = cudf.read_feather(input_dir / "test.ftr")
         with timer(name="generate features"):
             generate_features(
                 train_df=train,
@@ -108,19 +144,21 @@ if __name__ == "__main__":
         x_test.columns = [
             "".join(c if c.isalnum() else "_" for c in str(x)) for x in x_test.columns
         ]
+        categorical_cols = x_train.select_dtypes("category").columns
+        x_train = x_train.to_pandas()
+        x_test = x_test.to_pandas()
 
     with timer("delete duplicated columns"):
         x_train = delete_duplicated_columns(x_train)
         x_test = delete_duplicated_columns(x_test)
 
     with timer("make target and remove cols"):
-        y_train = x_train["target"].values.reshape(-1)
+        y_train = x_train[config["target"]].values.reshape(-1)
+        y_train = np.log1p(y_train)
 
         if config["pre_process"]["do"]:
             col = config["pre_process"]["col"]
             y_train = y_train / x_train[col].values.reshape(-1)
-
-        y_train = np.log1p(y_train)
 
         if config["pre_process"]["xentropy"]:
             scaler = MinMaxScaler()
@@ -130,15 +168,15 @@ if __name__ == "__main__":
 
         cols: List[str] = x_train.columns.tolist()
         with timer("remove col"):
-            remove_cols = [
-                "target",
-                "Period",
-                "target_MunicipalityCode_mean",
-                "target_DistrictName_mean",
-                "target_NearestStation_mean",
-                "target_LandShape_mean",
-                "target_CityPlanning_mean",
+            remove_cols = ["Developer", "Name"]
+            target_cols = [
+                "NA_Sales",
+                "EU_Sales",
+                "JP_Sales",
+                "Other_Sales",
+                "Global_Sales",
             ]
+            remove_cols = remove_cols + target_cols
             cols = [col for col in cols if col not in remove_cols]
             x_train, x_test = x_train[cols], x_test[cols]
 
@@ -151,99 +189,111 @@ if __name__ == "__main__":
     # === Feature Selection
     # ===============================
     with timer("Feature Selection"):
-        with timer("Feature Selection by ConstantFeatureEliminator"):
-            selector = ConstantFeatureEliminator()
-            x_train = selector.fit_transform(x_train)
-            x_test = selector.transform(x_test)
-            assert len(x_train.columns) == len(x_test.columns)
-            logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
-            cols = x_train.columns.tolist()
+        if config["feature_selection"]["top_k"]["do"]:
+            use_cols = select_top_k_features(config["feature_selection"]["top_k"]) + [
+                "Publisher"
+            ]
+            x_train, x_test = x_train[use_cols], x_test[use_cols]
+        else:
+            with timer("Feature Selection by ConstantFeatureEliminator"):
+                selector = KarunruConstantFeatureEliminator()
+                x_train = selector.fit_transform(x_train)
+                x_test = selector.transform(x_test)
+                assert len(x_train.columns) == len(x_test.columns)
+                logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+                cols = x_train.columns.tolist()
 
-        with timer("Feature Selection by SpearmanCorrelationEliminator"):
-            selector = SpearmanCorrelationEliminator(threshold=0.995)
-            x_train = selector.fit_transform(x_train)
-            x_test = selector.transform(x_test)
-            assert len(x_train.columns) == len(x_test.columns)
-            logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
-            cols = x_train.columns.tolist()
+            with timer("Feature Selection by SpearmanCorrelationEliminator"):
+                selector = KarunruSpearmanCorrelationEliminator(
+                    threshold=0.99, dry_run=True
+                )
+                x_train = selector.fit_transform(x_train)
+                x_test = selector.transform(x_test)
+                assert len(x_train.columns) == len(x_test.columns)
+                logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+                cols = x_train.columns.tolist()
 
-        # with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
-        #     number_cols = x_train[cols].select_dtypes(include='number').columns
-        #     to_remove = remove_ks_features(x_train[number_cols], x_test[number_cols], number_cols)
-        #     cols = [col for col in cols if col not in to_remove]
+            # with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
+            #     number_cols = x_train[cols].select_dtypes(include="number").columns
+            #     to_remove = remove_ks_features(
+            #         x_train[number_cols], x_test[number_cols], number_cols
+            #     )
+            #     logging.info(f"Removed features : {to_remove}")
+            #     cols = [col for col in cols if col not in to_remove]
 
         cols = x_train.columns.tolist()
-        categorical_cols = x_train.select_dtypes(include="category").columns.tolist()
+        categorical_cols = [col for col in categorical_cols if col in cols]
+        categorical_cols = [col for col in categorical_cols if col != "Publisher"]
         config["categorical_cols"] = categorical_cols
         logging.info("Training with {} features".format(len(cols)))
 
     # ===============================
     # === Adversarial Validation
     # ===============================
-    logging.info("Adversarial Validation")
-    with timer("Adversarial Validation"):
-        train_adv = x_train.copy()
-        test_adv = x_test.copy()
-
-        train_adv["target"] = 0
-        test_adv["target"] = 1
-        train_test_adv = pd.concat(
-            [train_adv, test_adv], axis=0, sort=False
-        ).reset_index(drop=True)
-
-        splits = KFold(n_splits=5, random_state=1223, shuffle=True).split(
-            train_test_adv
-        )
-
-        aucs = []
-        importance = np.zeros(len(cols))
-        for trn_idx, val_idx in splits:
-            x_train_adv = train_test_adv.loc[trn_idx, cols]
-            y_train_adv = train_test_adv.loc[trn_idx, "target"]
-            x_val_adv = train_test_adv.loc[val_idx, cols]
-            y_val_adv = train_test_adv.loc[val_idx, "target"]
-
-            train_lgb = lgb.Dataset(x_train_adv, label=y_train_adv)
-            valid_lgb = lgb.Dataset(x_val_adv, label=y_val_adv)
-
-            model_params = config["av"]["model_params"]
-            train_params = config["av"]["train_params"]
-            clf = lgb.train(
-                model_params,
-                train_lgb,
-                valid_sets=[train_lgb, valid_lgb],
-                valid_names=["train", "valid"],
-                **train_params,
-            )
-
-            aucs.append(clf.best_score)
-            importance += clf.feature_importance(importance_type="gain") / 5
-
-        # Check the feature importance
-        feature_imp = pd.DataFrame(
-            sorted(zip(importance, cols)), columns=["value", "feature"]
-        )
-
-        plt.figure(figsize=(20, 10))
-        sns.barplot(
-            x="value",
-            y="feature",
-            data=feature_imp.sort_values(by="value", ascending=False).head(50),
-        )
-        plt.title("LightGBM Features")
-        plt.tight_layout()
-        plt.savefig(output_dir / "feature_importance_adv.png")
-
-        config["av_result"] = dict()
-        config["av_result"]["score"] = dict()
-        for i, auc in enumerate(aucs):
-            config["av_result"]["score"][f"fold{i}"] = auc
-
-        config["av_result"]["feature_importances"] = (
-            feature_imp.set_index("feature")
-            .sort_values(by="value", ascending=False)
-            .to_dict()["value"]
-        )
+    # logging.info("Adversarial Validation")
+    # with timer("Adversarial Validation"):
+    #     train_adv = x_train.copy()
+    #     test_adv = x_test.copy()
+    #
+    #     train_adv["target"] = 0
+    #     test_adv["target"] = 1
+    #     train_test_adv = pd.concat(
+    #         [train_adv, test_adv], axis=0, sort=False
+    #     ).reset_index(drop=True)
+    #
+    #     splits = KFold(n_splits=5, random_state=1223, shuffle=True).split(
+    #         train_test_adv
+    #     )
+    #
+    #     aucs = []
+    #     importance = np.zeros(len(cols))
+    #     for trn_idx, val_idx in splits:
+    #         x_train_adv = train_test_adv.loc[trn_idx, cols]
+    #         y_train_adv = train_test_adv.loc[trn_idx, "target"]
+    #         x_val_adv = train_test_adv.loc[val_idx, cols]
+    #         y_val_adv = train_test_adv.loc[val_idx, "target"]
+    #
+    #         train_lgb = lgb.Dataset(x_train_adv, label=y_train_adv)
+    #         valid_lgb = lgb.Dataset(x_val_adv, label=y_val_adv)
+    #
+    #         model_params = config["av"]["model_params"]
+    #         train_params = config["av"]["train_params"]
+    #         clf = lgb.train(
+    #             model_params,
+    #             train_lgb,
+    #             valid_sets=[train_lgb, valid_lgb],
+    #             valid_names=["train", "valid"],
+    #             **train_params,
+    #         )
+    #
+    #         aucs.append(clf.best_score)
+    #         importance += clf.feature_importance(importance_type="gain") / 5
+    #
+    #     # Check the feature importance
+    #     feature_imp = pd.DataFrame(
+    #         sorted(zip(importance, cols)), columns=["value", "feature"]
+    #     )
+    #
+    #     plt.figure(figsize=(20, 10))
+    #     sns.barplot(
+    #         x="value",
+    #         y="feature",
+    #         data=feature_imp.sort_values(by="value", ascending=False).head(50),
+    #     )
+    #     plt.title("LightGBM Features")
+    #     plt.tight_layout()
+    #     plt.savefig(output_dir / "feature_importance_adv.png")
+    #
+    #     config["av_result"] = dict()
+    #     config["av_result"]["score"] = dict()
+    #     for i, auc in enumerate(aucs):
+    #         config["av_result"]["score"][f"fold{i}"] = auc
+    #
+    #     config["av_result"]["feature_importances"] = (
+    #         feature_imp.set_index("feature")
+    #         .sort_values(by="value", ascending=False)
+    #         .to_dict()["value"]
+    #     )
 
     # ===============================
     # === Train model
@@ -253,10 +303,17 @@ if __name__ == "__main__":
     # get folds
     with timer("Train model"):
         with timer("get validation"):
-            x_train["target"] = np.log1p(y_train) > 7.0
+            x_train["target"] = y_train
+            x_train["group"] = pd.qcut(
+                np.log1p(x_train["target"]),
+                q=[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
+                labels=False,
+                duplicates="drop",
+            )
             splits = get_validation(x_train, config)
-            del x_train["target"]
+            del x_train["target"], x_train["group"], x_train["Publisher"]
             gc.collect()
+            cols = [col for col in cols if col != "Publisher"]
 
         model = get_model(config)
         (
@@ -305,4 +362,4 @@ if __name__ == "__main__":
 
     save_pickle(models, output_dir / "model.pkl")
 
-    slack_notify(config_name + "終わったぞ\n" + str(config))
+    # slack_notify(config_name + "終わったぞ\n" + str(config))
