@@ -8,10 +8,6 @@ from typing import Optional, Tuple
 import cudf
 import numpy as np
 from src.utils import reduce_mem_usage, timer
-from src.validation.feature_selection import (
-    KarunruSpearmanCorrelationEliminator,
-    KarunruConstantFeatureEliminator,
-)
 
 
 class Feature(metaclass=abc.ABCMeta):
@@ -37,28 +33,6 @@ class Feature(metaclass=abc.ABCMeta):
     ):
         with timer(self.name, log=log):
             self.create_features(train_df, test_df=test_df)
-            with timer("feature selection"):
-                target_cols = [
-                    "NA_Sales",
-                    "EU_Sales",
-                    "JP_Sales",
-                    "Other_Sales",
-                    "Global_Sales",
-                ]
-                with timer("ConstantFeatureEliminator"):
-                    selector = KarunruConstantFeatureEliminator()
-                    self.train = selector.fit_transform(self.train)
-                    selector._selected_cols = [
-                        col for col in selector._selected_cols if col not in target_cols
-                    ]
-                    self.test = selector.transform(self.test)
-                with timer("KarunruSpearmanCorrelationEliminator"):
-                    selector = KarunruSpearmanCorrelationEliminator()
-                    self.train = selector.fit_transform(self.train)
-                    selector._selected_cols = [
-                        col for col in selector._selected_cols if col not in target_cols
-                    ]
-                    self.test = selector.transform(self.test)
             prefix = self.prefix + "_" if self.prefix else ""
             suffix = self.suffix + "_" if self.suffix else ""
             self.train.columns = cudf.Index(
