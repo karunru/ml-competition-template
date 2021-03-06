@@ -113,15 +113,6 @@ def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
             axis=1,
             sort=False,
         )
-        # x_train = pd.concat(
-        #     [
-        #         pd.read_feather(f"{feature_path}/{f}_train.ftr")
-        #         for f in config["features"]
-        #         if Path(f"{feature_path}/{f}_train.ftr").exists()
-        #     ],
-        #     axis=1,
-        #     sort=False,
-        # )
 
     with timer("load test"):
         x_test = cudf.concat(
@@ -133,14 +124,5 @@ def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
             axis=1,
             sort=False,
         )
-        # x_test = pd.concat(
-        #     [
-        #         pd.read_feather(f"{feature_path}/{f}_test.ftr")
-        #         for f in config["features"]
-        #         if Path(f"{feature_path}/{f}_test.ftr").exists()
-        #     ],
-        #     axis=1,
-        #     sort=False,
-        # )
 
     return x_train, x_test
