@@ -18,5 +18,5 @@ cudf==0.16.0
 imblearn==0.0
 KTBoost==0.1.19
 pytorch_tabnet==2.0.1
-PyYAML==5.3.1
+PyYAML==5.4
 scikit_learn==0.23.2
