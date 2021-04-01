@@ -7,7 +7,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     base_config_path = Path(args.base_config)
-    config_name = str(args.config_name)
+    config_name = args.base_config.split("/")[-1].replace(".yml", "")
     num_seeds = int(args.num_seeds)
 
     configs_dir = Path("./config") / config_name

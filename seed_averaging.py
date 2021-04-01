@@ -109,4 +109,5 @@ if __name__ == "__main__":
 
     np.save(output / "test_preds.npy", test_pred)
 
-    submission_df.to_csv(output / "submission.csv", index=False)
+    config_name = args.output.split("/")[-1]
+    submission_df.to_csv(output / f"{config_name}_sub.csv", index=False)

@@ -32,7 +32,6 @@ def get_preprocess_parser() -> argparse.ArgumentParser:
 def get_making_seed_average_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_config", required=True, help="Base config file path")
-    parser.add_argument("--config_name", required=True, help="config name")
     parser.add_argument("--num_seeds", required=True, help="num seeds")
 
     return parser

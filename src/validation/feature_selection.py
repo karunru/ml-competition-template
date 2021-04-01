@@ -34,7 +34,7 @@ def select_top_k_features(
     if "feature_importance" in importances_dict.keys():
         importances_dict = importances_dict["feature_importance"]
     elif "eval_results" in importances_dict.keys():
-        importances_dict = importances_dict["eval_results"]["eval_result"][
+        importances_dict = importances_dict["eval_results"]["evals_result"][
             "feature_importance"
         ]
     else:

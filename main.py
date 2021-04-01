@@ -120,13 +120,22 @@ if __name__ == "__main__":
         x_train = delete_duplicated_columns(x_train)
         x_test = delete_duplicated_columns(x_test)
 
+    with timer("load predictions"):
+        org_cols = x_train.columns.to_list()
+        preds = config["stacking"]["predictions"]
+        for pred in preds:
+            x_train[pred] = np.load("output/" + pred + "/oof_preds.npy")
+            x_test[pred] = np.load("output/" + pred + "/test_preds.npy")
+
     with timer("make target and remove cols"):
         y_train = x_train[config["target"]].values.reshape(-1)
         y_train = np.log1p(y_train)
 
         if config["pre_process"]["do"]:
             col = config["pre_process"]["col"]
-            y_train = x_train[config["target"]].values.reshape(-1) / x_train[col].values.reshape(-1)
+            y_train = x_train[config["target"]].values.reshape(-1) / x_train[
+                col
+            ].values.reshape(-1)
             y_train = np.log1p(y_train)
 
         if config["pre_process"]["xentropy"]:
@@ -138,6 +147,8 @@ if __name__ == "__main__":
         cols: List[str] = x_train.columns.tolist()
         with timer("remove col"):
             remove_cols = [] + [config["target"]]
+            if not config["stacking"]["use_org_cols"]:
+                remove_cols += org_cols
             cols = [col for col in cols if col not in remove_cols]
             x_train, x_test = x_train[cols], x_test[cols]
 
@@ -152,6 +163,7 @@ if __name__ == "__main__":
     with timer("Feature Selection"):
         if config["feature_selection"]["top_k"]["do"]:
             use_cols = select_top_k_features(config["feature_selection"]["top_k"])
+            use_cols = [col for col in use_cols if "_TE" not in col]
             x_train, x_test = x_train[use_cols], x_test[use_cols]
         else:
             with timer("Feature Selection by ConstantFeatureEliminator"):
@@ -160,16 +172,23 @@ if __name__ == "__main__":
                 x_test = selector.transform(x_test)
                 assert len(x_train.columns) == len(x_test.columns)
                 logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+                print(f"Removed features : {set(cols) - set(x_train.columns)}")
                 cols = x_train.columns.tolist()
 
             with timer("Feature Selection by SpearmanCorrelationEliminator"):
                 selector = KarunruSpearmanCorrelationEliminator(
-                    threshold=0.99, dry_run=True
+                    threshold=config["feature_selection"]["SpearmanCorrelation"][
+                        "threshold"
+                    ],
+                    dry_run=config["feature_selection"]["SpearmanCorrelation"][
+                        "dryrun"
+                    ],
                 )
                 x_train = selector.fit_transform(x_train)
                 x_test = selector.transform(x_test)
                 assert len(x_train.columns) == len(x_test.columns)
                 logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+                print(f"Removed features : {set(cols) - set(x_train.columns)}")
                 cols = x_train.columns.tolist()
 
             # with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
@@ -190,11 +209,15 @@ if __name__ == "__main__":
     # get folds
     with timer("Train model"):
         with timer("get validation"):
+            x_train["binned_target"] = pd.qcut(
+                y_train,
+                q=[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
+                labels=False,
+                duplicates="drop",
+            )
             splits = get_validation(x_train, config)
-            del x_train["PlaceID"], x_test["PlaceID"]
+            del x_train["binned_target"]
             gc.collect()
-            cols = [col for col in cols if col != "PlaceID"]
-            logging.info("Training with {} features".format(len(cols)))
 
         model = get_model(config)
         (

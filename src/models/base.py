@@ -64,12 +64,33 @@ class BaseModel(object):
     ) -> Tuple[
         np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
     ]:
+        _y_train = np.expm1(y_train)
+        _oof_preds = np.expm1(oof_preds)
+        _test_preds = np.expm1(test_preds)
+        _y_valid = np.expm1(y_valid) if y_valid is not None else None
+        _valid_preds = np.expm1(valid_preds) if valid_preds is not None else None
+
+        if config["post_process"]["do"]:
+            col = config["post_process"]["col"]
+            _oof_preds = oof_preds * train_features[col]
+            _y_train = _y_train * train_features[col]
+            _test_preds = _test_preds * test_features[col]
+            _y_valid = _y_valid * valid_features[col] if y_valid is not None else None
+            _valid_preds = (
+                _valid_preds * valid_features[col] if valid_preds is not None else None
+            )
+
+        _oof_preds[_oof_preds < 0] = 0
+        _test_preds[_test_preds < 0] = 0
+        if _valid_preds is not None:
+            _valid_preds[_valid_preds < 0] = 0
+
         return (
-            np.expm1(y_train),
-            np.expm1(oof_preds),
-            np.expm1(test_preds),
-            np.expm1(y_valid) if y_valid is not None else None,
-            np.expm1(valid_preds) if y_valid is not None else None,
+            _y_train,
+            _oof_preds,
+            _test_preds,
+            _y_valid if y_valid is not None else None,
+            _valid_preds if y_valid is not None else None,
         )
 
     def cv(
