@@ -20,7 +20,7 @@ def plot_venn2(
     col: str,
     df1_name: str = "train",
     df2_name: str = "test",
-):
+) -> Tuple[set, set]:
     set1 = set(df1[col].unique().to_pandas()) if is_cudf(df1) else set(df1[col].unique())
     set2 = set(df2[col].unique().to_pandas()) if is_cudf(df2) else set(df2[col].unique())
 

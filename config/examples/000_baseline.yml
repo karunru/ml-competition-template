@@ -1,0 +1,68 @@
+seed_everything: &seed 1031
+
+dataset:
+  dir: "input"
+  feature_dir: "features"
+  params:
+
+features:
+  - Basic
+
+target: "AverageLandPrice"
+
+remove_cols:
+  - "session_id"
+  - "n_add_item"
+
+
+feature_selection:
+  SpearmanCorrelation:
+    dryrun: True
+  top_k:
+    do: False
+    importance: "034_seed_average_033"
+    top_k: 0.1
+
+pre_process:
+  do: False
+  col: ""
+  xentropy: False
+
+post_process:
+  do: False
+  col: ""
+
+model:
+  name: "xgb"
+  mode: "regression"
+
+  model_params:
+    objective: "reg:squarederror"
+    booster: "gbtree"
+    eval_metric: "rmse"
+    tree_method: "gpu_hist"
+    max_depth: 6
+    learning_rate: 0.01
+    n_estimators: 10000
+    min_child_weight: 1.0
+    gamma: 0.0
+    colsample_bytree: 0.7
+    colsample_bylevel: 0.3
+    reg_alpha: 0.0
+    reg_lambda: 1.0
+    verbosity: 0
+    seed: *seed
+    random_state: *seed
+
+  train_params:
+    early_stopping_rounds: 200
+    verbose: True
+
+val:
+  name: "group_kfold"
+  params:
+    group: "PlaceID"
+    n_splits: 5
+    random_state: *seed
+
+output_dir: "output"
