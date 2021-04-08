@@ -38,6 +38,7 @@ def _get_default() -> dict:
     # feature selection
     cfg["feature_selection"] = dict()
     cfg["feature_selection"]["SpearmanCorrelation"] = dict()
+    cfg["feature_selection"]["Kolmogorov-Smirnov"] = dict()
     cfg["feature_selection"]["top_k"] = dict()
 
 

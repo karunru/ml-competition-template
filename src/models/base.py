@@ -64,11 +64,26 @@ class BaseModel(object):
     ) -> Tuple[
         np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
     ]:
-        _y_train = np.expm1(y_train)
-        _oof_preds = np.expm1(oof_preds)
-        _test_preds = np.expm1(test_preds)
-        _y_valid = np.expm1(y_valid) if y_valid is not None else None
-        _valid_preds = np.expm1(valid_preds) if valid_preds is not None else None
+        if target_scaler is not None:
+            _y_train = np.expm1(target_scaler.inverse_transform(y_train.reshape(-1, 1)).reshape(-1))
+            _oof_preds = np.expm1(target_scaler.inverse_transform(oof_preds.reshape(-1, 1)).reshape(-1))
+            _test_preds = np.expm1(target_scaler.inverse_transform(test_preds.reshape(-1, 1)).reshape(-1))
+            _y_valid = (
+                np.expm1(target_scaler.inverse_transform(y_valid.reshape(-1, 1)).reshape(-1))
+                if y_valid is not None
+                else None
+            )
+            _valid_preds = (
+                np.expm1(target_scaler.inverse_transform(valid_preds.reshape(-1, 1)).reshape(-1))
+                if valid_preds is not None
+                else None
+            )
+        else:
+            _y_train = np.expm1(y_train)
+            _oof_preds = np.expm1(oof_preds)
+            _test_preds = np.expm1(test_preds)
+            _y_valid = np.expm1(y_valid) if y_valid is not None else None
+            _valid_preds = np.expm1(valid_preds) if valid_preds is not None else None
 
         if config["post_process"]["do"]:
             col = config["post_process"]["col"]
@@ -160,9 +175,7 @@ class BaseModel(object):
                             )
                             x_val[cat_col + "_TE"] = encoder.transform(x_val[cat_col])
 
-                logging.info(
-                    f"train size: {x_trn.shape}, valid size: {x_val.shape}"
-                )
+                logging.info(f"train size: {x_trn.shape}, valid size: {x_val.shape}")
                 print(f"train size: {x_trn.shape}, valid size: {x_val.shape}")
 
                 with timer("get sampling"):

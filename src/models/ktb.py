@@ -33,6 +33,9 @@ class KTBoost(BaseModel):
         categorical_cols = config["categorical_cols"]
 
         for col in categorical_cols:
+            if str(x_train[col].dtype) != "category":
+                x_train[col] = x_train[col].astype("category")
+                x_valid[col] = x_valid[col].astype("category")
             x_train[col] = x_train[col].cat.add_categories("Unknown")
             x_train[col] = x_train[col].fillna("Unknown")
             x_train[col] = x_train[col].cat.codes
@@ -42,8 +45,12 @@ class KTBoost(BaseModel):
 
         numerical_cols = [col for col in x_train.columns if col not in categorical_cols]
         for col in numerical_cols:
-            x_train[col] = x_train[col].fillna(x_train[col].mean())
-            x_valid[col] = x_valid[col].fillna(x_train[col].mean())
+            x_train[col] = x_train[col].replace(np.inf, x_train[col])
+            x_train[col] = x_train[col].fillna(np.nanmean(x_train[col]))
+            x_valid[col] = x_valid[col].fillna(np.nanmean(x_train[col]))
+            print(x_train[col].max())
+            assert not np.isinf(x_train[col].max())
+            assert not np.isinf(x_valid[col].max())
 
         model.fit(x_train.values, y_train)
 

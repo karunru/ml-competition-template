@@ -21,8 +21,12 @@ def plot_venn2(
     df1_name: str = "train",
     df2_name: str = "test",
 ) -> Tuple[set, set]:
-    set1 = set(df1[col].unique().to_pandas()) if is_cudf(df1) else set(df1[col].unique())
-    set2 = set(df2[col].unique().to_pandas()) if is_cudf(df2) else set(df2[col].unique())
+    set1 = (
+        set(df1[col].unique().to_pandas()) if is_cudf(df1) else set(df1[col].unique())
+    )
+    set2 = (
+        set(df2[col].unique().to_pandas()) if is_cudf(df2) else set(df2[col].unique())
+    )
 
     venn2([set1, set2], (df1_name, df2_name))
     plt.title(col)
@@ -189,4 +193,38 @@ def plot_confusion_matrix(
                 color="white" if cm[i, j] > thresh else "black",
             )
     fig.tight_layout()
+    plt.savefig(save_path)
+
+
+def plot_pred_density(
+    y,
+    test_preds,
+    oof_preds,
+    save_path: Path = Path("./feature_importance_model.png"),
+):
+    fig, ax = plt.subplots(figsize=(8, 8))
+    sns.histplot(
+        y,
+        label="target",
+        kde=True,
+        stat="density",
+        common_norm=False,
+        color="orange",
+        alpha=0.3,
+    )
+    sns.histplot(
+        test_preds,
+        label="test_pred",
+        kde=True,
+        stat="density",
+        common_norm=False,
+        alpha=0.3,
+    )
+    sns.histplot(
+        oof_preds,
+        label="oob_pred", kde=True, stat="density", common_norm=False, alpha=0.3,color='r'
+    )
+    ax.legend()
+    ax.grid()
+
     plt.savefig(save_path)

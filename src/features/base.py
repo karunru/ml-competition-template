@@ -1,4 +1,5 @@
 import abc
+import collections
 import gc
 import inspect
 import logging
@@ -107,6 +108,9 @@ def load_features(config: dict) -> Tuple[cudf.DataFrame, cudf.DataFrame]:
         for feats in train_feats:
             cols = cols + feats.columns.tolist()
 
+        print(
+            f"duplicated cols: {[k for k, v in collections.Counter(cols).items() if v > 1]}"
+        )
         assert len(cols) == len(np.unique(cols))
         x_train = cudf.concat(
             train_feats,

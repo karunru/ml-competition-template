@@ -19,7 +19,8 @@ from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
 from sklearn.model_selection import KFold, StratifiedKFold
 from src.utils import timer
 from tqdm import tqdm
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BertTokenizer, pipeline
+from transformers import (AutoModelForSeq2SeqLM, AutoTokenizer, BertTokenizer,
+                          pipeline)
 from xfeat.types import XDataFrame
 from xfeat.utils import is_cudf
 
@@ -123,7 +124,13 @@ class DiffGroupbyTransformer(GroupbyTransformer):
                         new_feature = "_".join(["diff", a, v, "groupby"] + key)
                         base_feature = "_".join([a, v, "groupby"] + key)
                     print(new_feature)
-                    dataframe[new_feature] = dataframe[base_feature] - dataframe[v]
+                    if str(dataframe[v].dtype) == "category":
+                        dataframe[new_feature] = dataframe[base_feature] - dataframe[
+                            v
+                        ].astype(int)
+                    else:
+                        dataframe[new_feature] = dataframe[base_feature] - dataframe[v]
+
         return dataframe
 
     def _get_feature_names(self, key, var, agg):
@@ -157,7 +164,13 @@ class RatioGroupbyTransformer(GroupbyTransformer):
                         new_feature = "_".join(["ratio", a, v, "groupby"] + key)
                         base_feature = "_".join([a, v, "groupby"] + key)
                     print(new_feature)
-                    dataframe[new_feature] = dataframe[v] / dataframe[base_feature]
+
+                    if str(dataframe[v].dtype) == "category":
+                        dataframe[new_feature] = dataframe[base_feature] / dataframe[
+                            v
+                        ].astype(int)
+                    else:
+                        dataframe[new_feature] = dataframe[base_feature] / dataframe[v]
         return dataframe
 
     def _get_feature_names(self, key, var, agg):
@@ -854,9 +867,11 @@ class BertSequenceVectorizer:
         self.max_len = 128
 
     def vectorize(self, sentence: str) -> np.array:
-        inp = self.tokenizer.encode(sentence
-                    ,truncation=True,
-                    max_length=512,)
+        inp = self.tokenizer.encode(
+            sentence,
+            truncation=True,
+            max_length=512,
+        )
         len_inp = len(inp)
 
         if len_inp >= self.max_len:

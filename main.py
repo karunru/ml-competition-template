@@ -15,9 +15,11 @@ import numpy as np
 import pandas as pd
 import rmm
 import seaborn as sns
+from pandarallel import pandarallel
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import MinMaxScaler
+from tqdm import tqdm
 from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
                    SpearmanCorrelationEliminator)
 
@@ -31,6 +33,7 @@ from src.utils import (configure_logger, delete_duplicated_columns,
                        merge_by_concat, plot_feature_importance,
                        reduce_mem_usage, save_json, save_pickle,
                        seed_everything, slack_notify, timer)
+from src.utils.visualization import plot_pred_density
 from src.validation import (KarunruSpearmanCorrelationEliminator,
                             default_feature_selector, get_validation,
                             remove_correlated_features, remove_ks_features,
@@ -41,6 +44,9 @@ if __name__ == "__main__":
     # Set RMM to allocate all memory as managed memory (cudaMallocManaged underlying allocator)
     rmm.reinitialize(managed_memory=True)
     assert rmm.is_initialized()
+
+    tqdm.pandas()
+    pandarallel.initialize(progress_bar=True)
 
     sys.path.append("./")
 
@@ -120,12 +126,13 @@ if __name__ == "__main__":
         x_train = delete_duplicated_columns(x_train)
         x_test = delete_duplicated_columns(x_test)
 
-    with timer("load predictions"):
-        org_cols = x_train.columns.to_list()
-        preds = config["stacking"]["predictions"]
-        for pred in preds:
-            x_train[pred] = np.load("output/" + pred + "/oof_preds.npy")
-            x_test[pred] = np.load("output/" + pred + "/test_preds.npy")
+    if config["stacking"]["do"]:
+        with timer("load predictions"):
+            org_cols = x_train.columns.to_list()
+            preds = config["stacking"]["predictions"]
+            for pred in preds:
+                x_train[pred] = np.load("output/" + pred + "/oof_preds.npy")
+                x_test[pred] = np.load("output/" + pred + "/test_preds.npy")
 
     with timer("make target and remove cols"):
         y_train = x_train[config["target"]].values.reshape(-1)
@@ -147,8 +154,9 @@ if __name__ == "__main__":
         cols: List[str] = x_train.columns.tolist()
         with timer("remove col"):
             remove_cols = [] + [config["target"]]
-            if not config["stacking"]["use_org_cols"]:
-                remove_cols += org_cols
+            if config["stacking"]["do"]:
+                if not config["stacking"]["use_org_cols"]:
+                    remove_cols += org_cols
             cols = [col for col in cols if col not in remove_cols]
             x_train, x_test = x_train[cols], x_test[cols]
 
@@ -161,48 +169,61 @@ if __name__ == "__main__":
     # === Feature Selection
     # ===============================
     with timer("Feature Selection"):
-        if config["feature_selection"]["top_k"]["do"]:
-            use_cols = select_top_k_features(config["feature_selection"]["top_k"])
-            use_cols = [col for col in use_cols if "_TE" not in col]
-            x_train, x_test = x_train[use_cols], x_test[use_cols]
-        else:
-            with timer("Feature Selection by ConstantFeatureEliminator"):
-                selector = KarunruConstantFeatureEliminator()
-                x_train = selector.fit_transform(x_train)
-                x_test = selector.transform(x_test)
-                assert len(x_train.columns) == len(x_test.columns)
-                logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
-                print(f"Removed features : {set(cols) - set(x_train.columns)}")
-                cols = x_train.columns.tolist()
+        if not config["stacking"]["do"]:
+            if config["feature_selection"]["top_k"]["do"]:
+                use_cols = select_top_k_features(config["feature_selection"]["top_k"])
+                use_cols = [col for col in use_cols if "_TE" not in col]
+                use_cols.append("PlaceID")
+                x_train, x_test = x_train[use_cols], x_test[use_cols]
+            else:
+                with timer("Feature Selection by ConstantFeatureEliminator"):
+                    selector = KarunruConstantFeatureEliminator()
+                    x_train = selector.fit_transform(x_train)
+                    x_test = selector.transform(x_test)
+                    assert len(x_train.columns) == len(x_test.columns)
+                    logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+                    print(f"Removed features : {set(cols) - set(x_train.columns)}")
+                    cols = x_train.columns.tolist()
 
-            with timer("Feature Selection by SpearmanCorrelationEliminator"):
-                selector = KarunruSpearmanCorrelationEliminator(
-                    threshold=config["feature_selection"]["SpearmanCorrelation"][
-                        "threshold"
-                    ],
-                    dry_run=config["feature_selection"]["SpearmanCorrelation"][
-                        "dryrun"
-                    ],
-                )
-                x_train = selector.fit_transform(x_train)
-                x_test = selector.transform(x_test)
-                assert len(x_train.columns) == len(x_test.columns)
-                logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
-                print(f"Removed features : {set(cols) - set(x_train.columns)}")
-                cols = x_train.columns.tolist()
+                with timer("Feature Selection by SpearmanCorrelationEliminator"):
+                    selector = KarunruSpearmanCorrelationEliminator(
+                        threshold=config["feature_selection"]["SpearmanCorrelation"][
+                            "threshold"
+                        ],
+                        dry_run=config["feature_selection"]["SpearmanCorrelation"][
+                            "dryrun"
+                        ],
+                        not_remove_cols=config["feature_selection"]["SpearmanCorrelation"][
+                            "not_remove_cols"
+                        ]
+                        if config["feature_selection"]["SpearmanCorrelation"][
+                            "not_remove_cols"
+                        ][0]
+                        != ""
+                        else [],
+                    )
+                    x_train = selector.fit_transform(x_train)
+                    x_test = selector.transform(x_test)
+                    assert len(x_train.columns) == len(x_test.columns)
+                    logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+                    print(f"Removed features : {set(cols) - set(x_train.columns)}")
+                    cols = x_train.columns.tolist()
 
-            # with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
-            #     number_cols = x_train[cols].select_dtypes(include="number").columns
-            #     to_remove = remove_ks_features(
-            #         x_train[number_cols], x_test[number_cols], number_cols
-            #     )
-            #     logging.info(f"Removed features : {to_remove}")
-            #     cols = [col for col in cols if col not in to_remove]
+                with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
+                    if config["feature_selection"]["Kolmogorov-Smirnov"]["do"]:
+                        number_cols = x_train[cols].select_dtypes(include="number").columns
+                        to_remove = remove_ks_features(
+                            x_train[number_cols], x_test[number_cols], number_cols
+                        )
+                        logging.info(f"Removed features : {to_remove}")
+                        print(f"Removed features : {to_remove}")
+                        cols = [col for col in cols if col not in to_remove]
 
         cols = x_train.columns.tolist()
         categorical_cols = [col for col in categorical_cols if col in cols]
         config["categorical_cols"] = categorical_cols
         logging.info(f"categorical_cols : {config['categorical_cols']}")
+        print(f"categorical_cols : {config['categorical_cols']}")
 
     logging.info("Train model")
 
@@ -257,6 +278,15 @@ if __name__ == "__main__":
     save_json(config, save_path)
 
     plot_feature_importance(feature_importance, output_dir / "feature_importance.png")
+
+    plot_pred_density(
+        np.log1p(np.expm1(y_train) * x_train[config["pre_process"]["col"]])
+        if config["pre_process"]["do"]
+        else y_train,
+        np.log1p(oof_preds),
+        np.log1p(test_preds),
+        output_dir / "pred_density.png",
+    )
 
     np.save(output_dir / "oof_preds.npy", oof_preds)
 

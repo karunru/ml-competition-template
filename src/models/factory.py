@@ -3,6 +3,7 @@ from .ert import ExtremelyRandomizedTrees
 from .ktb import KTBoost
 from .lightgbm import LightGBM
 from .rgf import RegularizedGreedyForest
+from .ridge import Ridge
 from .xgb import XGBoost
 from .tabnet import TabNet
 
@@ -34,6 +35,8 @@ def ktb() -> KTBoost:
 def tabnet() -> TabNet:
     return TabNet()
 
+def ridge() -> Ridge:
+    return Ridge()
 
 def get_model(config: dict):
     model_name = config["model"]["name"]

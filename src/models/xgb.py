@@ -31,8 +31,9 @@ class XGBoost(BaseModel):
         self.config["categorical_cols"] = categorical_cols
 
         for col in categorical_cols:
-            x_train[col] = x_train[col].cat.codes
-            x_valid[col] = x_valid[col].cat.codes
+            if x_train[col].dtype.name == "category":
+                x_train[col] = x_train[col].cat.codes
+                x_valid[col] = x_valid[col].cat.codes
 
         mode = config["model"]["mode"]
         self.mode = mode

@@ -13,6 +13,8 @@ AoS = Union[np.ndarray, XSeries]
 
 
 class CatBoost(BaseModel):
+    config = dict()
+
     def fit(
         self,
         x_train: AoD,
@@ -25,18 +27,21 @@ class CatBoost(BaseModel):
         model_params = config["model"]["model_params"]
         mode = config["model"]["train_params"]["mode"]
         self.mode = mode
-        categorical_cols = x_train.select_dtypes(include="category").columns
+
+        categorical_cols = config["categorical_cols"]
+        self.config["categorical_cols"] = categorical_cols
 
         if mode == "regression":
-            # model = CatBoostRegressor(cat_features=categorical_cols, **model_params)
-            model = CatBoostRegressor(**model_params)
+            model = CatBoostRegressor(cat_features=self.config["categorical_cols"], **model_params)
+            # model = CatBoostRegressor(**model_params)
         else:
-            # model = CatBoostClassifier(cat_features=categorical_cols, **model_params)
-            model = CatBoostClassifier(**model_params)
+            model = CatBoostClassifier(cat_features=self.config["categorical_cols"], **model_params)
+            # model = CatBoostClassifier(**model_params)
 
         model.fit(
-            x_train.values,
+            x_train,
             y_train,
+            cat_features=self.config["categorical_cols"],
             eval_set=(x_valid.values, y_valid),
             verbose=model_params["early_stopping_rounds"],
         )

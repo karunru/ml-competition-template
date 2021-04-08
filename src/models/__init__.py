@@ -6,3 +6,4 @@ from .rgf import RGFModel
 from .xgb import XGBModel
 from .ktb import KTModel
 from .tabnet import TabNetModel
+from .ridge import RidgeModel
