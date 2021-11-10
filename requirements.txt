@@ -4,7 +4,7 @@ rmm==0.16.0
 matplotlib==3.3.2
 Keras==2.4.3
 numpy==1.19.2
-tensorflow==2.4.1
+tensorflow==2.5.2
 nltk==3.5
 imbalanced_learn==0.7.0
 torch==1.7.1
