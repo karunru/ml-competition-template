@@ -222,7 +222,12 @@ def plot_pred_density(
     )
     sns.histplot(
         oof_preds,
-        label="oob_pred", kde=True, stat="density", common_norm=False, alpha=0.3,color='r'
+        label="oob_pred",
+        kde=True,
+        stat="density",
+        common_norm=False,
+        alpha=0.3,
+        color="r",
     )
     ax.legend()
     ax.grid()

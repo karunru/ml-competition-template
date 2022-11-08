@@ -2,7 +2,6 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-
 from KTBoost.KTBoost import BoostingClassifier, BoostingRegressor
 from xfeat.types import XDataFrame, XSeries
 
@@ -21,7 +20,7 @@ class KTBoost(BaseModel):
         x_valid: AoD,
         y_valid: AoS,
         config: dict,
-        **kwargs
+        **kwargs,
     ) -> Tuple[KTModel, dict]:
         model_params = config["model"]["model_params"]
         mode = config["model"]["train_params"]["mode"]

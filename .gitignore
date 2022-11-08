@@ -118,3 +118,9 @@ notebooks/each_ids_time_series_images/
 # editor
 .vscode
 .idea/workspace.xml
+
+# neptune
+.neptune/
+
+# notebook
+notebooks/null_importance.ipynb

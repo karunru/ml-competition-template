@@ -38,13 +38,13 @@ class Feature(metaclass=abc.ABCMeta):
             suffix = self.suffix + "_" if self.suffix else ""
             self.train.columns = cudf.Index(
                 [str(c) for c in self.train.columns]
-            ).to_array()
+            ).to_numpy()
             self.valid.columns = cudf.Index(
                 [str(c) for c in self.valid.columns]
-            ).to_array()
+            ).to_numpy()
             self.test.columns = cudf.Index(
                 [str(c) for c in self.test.columns]
-            ).to_array()
+            ).to_numpy()
             self.train.columns = prefix + self.train.columns + suffix
             self.valid.columns = prefix + self.valid.columns + suffix
             self.test.columns = prefix + self.test.columns + suffix

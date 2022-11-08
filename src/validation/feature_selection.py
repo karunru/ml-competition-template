@@ -1,3 +1,5 @@
+import gc
+import itertools
 import json
 import logging
 import re
@@ -7,15 +9,23 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import cudf
+import joblib
 import numpy as np
 import pandas as pd
+import torch.cuda
 from scipy.stats import ks_2samp
-from src.utils import load_pickle, logger, save_pickle
+from src.utils import load_pickle, logger, save_pickle, timer
+from src.utils.tools import tqdm_joblib
 from tqdm import tqdm
-from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
-                   Pipeline, SpearmanCorrelationEliminator)
+from xfeat import (
+    ConstantFeatureEliminator,
+    DuplicatedFeatureEliminator,
+    Pipeline,
+    SpearmanCorrelationEliminator,
+)
 from xfeat.base import SelectorMixin
 from xfeat.types import XDataFrame
+from xfeat.utils import is_cudf
 
 
 def select_top_k_features(
@@ -122,23 +132,14 @@ class KarunruSpearmanCorrelationEliminator(SelectorMixin):
         not_remove_cols=[],
     ):
         """[summary]."""
+        self._input_df = pd.DataFrame()
+        self._is_cudf = True
+        self._org_cols = []
         self._selected_cols = []
         self._threshold = threshold
         self.dry_run = dry_run
-        self.save_path = save_path
         self.not_remove_cols = not_remove_cols
-
-    @staticmethod
-    def _has_removed(
-        feat_a: str,
-        feat_b: str,
-        removed_cols: List[str],
-    ):
-        return feat_a in removed_cols or feat_b in removed_cols
-
-    @staticmethod
-    def _has_seen(feat_a: str, feat_b: str, seen_pairs: Dict):
-        return feat_b in seen_pairs[feat_a] or feat_a in seen_pairs[feat_b]
+        self.save_path = save_path
 
     def fit(self, input_df: XDataFrame) -> None:
         """Fit to data frame
@@ -148,66 +149,90 @@ class KarunruSpearmanCorrelationEliminator(SelectorMixin):
         Returns:
             XDataFrame : Output data frame.
         """
-        org_cols = input_df.columns.tolist()
+        self._is_cudf = is_cudf(input_df)
+        # self._input_df = input_df
+        self._org_cols = input_df.columns.tolist()
 
-        input_df = (
-            input_df.to_pandas() if isinstance(input_df, cudf.DataFrame) else input_df
+        seen_cols_pairs_set = (
+            load_pickle(
+                self.save_path / f"seen_feats_pairs_set_corr_{self._threshold}.pkl"
+            )
+            if (
+                self.save_path / f"seen_feats_pairs_set_corr_{self._threshold}.pkl"
+            ).exists()
+            else set()
         )
-
-        seen_cols_pairs = (
-            load_pickle(self.save_path / "seen_feats_pairs.pkl")
-            if (self.save_path / "seen_feats_pairs.pkl").exists()
+        removed_cols_pairs_dict = (
+            load_pickle(
+                self.save_path / f"removed_feats_pairs_dict_corr_{self._threshold}.pkl"
+            )
+            if (
+                self.save_path / f"removed_feats_pairs_dict_corr_{self._threshold}.pkl"
+            ).exists()
             else defaultdict(list)
         )
-        removed_cols_pairs = (
-            load_pickle(self.save_path / "removed_feats_pairs.pkl")
-            if (self.save_path / "removed_feats_pairs.pkl").exists()
-            else defaultdict(list)
-        )
-        removed_cols = sum(removed_cols_pairs.values(), [])
+        removed_cols = sum(removed_cols_pairs_dict.values(), [])
         if self.dry_run:
             self._selected_cols = [
-                col for col in org_cols if col not in set(removed_cols)
+                col for col in self._org_cols if col not in set(removed_cols)
             ]
             return
 
-        org_cols = [col for col in org_cols if col not in removed_cols]
-        counter = 0
-        for i in tqdm(range(len(org_cols) - 1)):
-            feat_a_name = org_cols[i]
-            if feat_a_name in removed_cols:
-                continue
+        org_cols = [col for col in self._org_cols if col not in removed_cols]
+        org_cols_pair_set = {
+            frozenset({feat_a, feat_b})
+            for feat_a, feat_b in itertools.combinations(org_cols, r=2)
+        }
+        org_cols_pair_set = org_cols_pair_set - seen_cols_pairs_set
+        seen_cols_pairs_set = seen_cols_pairs_set | org_cols_pair_set
 
-            feat_a = input_df[feat_a_name]
+        if len(org_cols_pair_set) == 0:
+            self._selected_cols = org_cols
+            return
 
-            for j in range(i + 1, len(org_cols)):
-                feat_b_name = org_cols[j]
+        to_see_cols = set()
+        for pair in org_cols_pair_set:
+            to_see_cols.add(list(pair)[0])
+            to_see_cols.add(list(pair)[1])
 
-                if self._has_seen(feat_a_name, feat_b_name, seen_cols_pairs):
-                    continue
-                else:
-                    seen_cols_pairs[feat_a_name].append(feat_b_name)
-                    seen_cols_pairs[feat_b_name].append(feat_a_name)
+        with timer("calc corr"):
+            gc.collect()
+            torch.cuda.empty_cache()
+            corr_df = (
+                input_df[list(to_see_cols)]
+                .fillna(method="ffill")
+                .fillna(method="bfill")
+                .corr()
+            )
 
-                if self._has_removed(feat_a_name, feat_b_name, removed_cols):
-                    continue
+        with timer("get upper"):
+            upper_df = corr_df.to_pandas().where(
+                np.triu(np.ones(corr_df.shape), k=1).astype(bool)
+            )
 
-                feat_b = input_df[feat_b_name]
-                c = np.corrcoef(feat_a, feat_b)[0][1]
+        _removed_cols = [
+            col
+            for col in upper_df.columns
+            if any(upper_df[col].abs() > self._threshold)
+        ]
 
-                if abs(c) > self._threshold:
-                    counter += 1
-                    removed_cols.append(feat_b_name)
-                    removed_cols_pairs[feat_a_name].append(feat_b_name)
-                    print(
-                        "{}: FEAT_A: {} FEAT_B: {} - Correlation: {}".format(
-                            counter, feat_a_name, feat_b_name, c
-                        )
-                    )
+        for col in _removed_cols:
+            removed_cols_pairs_dict[col] += (
+                upper_df[col][upper_df[col].abs() > self._threshold]
+                .index.to_numpy()
+                .tolist()
+            )
+        removed_cols = removed_cols + _removed_cols
 
-        save_pickle(removed_cols_pairs, self.save_path / "removed_feats_pairs.pkl")
-        save_pickle(seen_cols_pairs, self.save_path / "seen_feats_pairs.pkl")
-        self._selected_cols = [col for col in org_cols if col not in set(removed_cols)]
+        save_pickle(
+            removed_cols_pairs_dict,
+            self.save_path / f"removed_feats_pairs_dict_corr_{self._threshold}.pkl",
+        )
+        save_pickle(
+            seen_cols_pairs_set,
+            self.save_path / f"seen_feats_pairs_set_corr_{self._threshold}.pkl",
+        )
+        self._selected_cols = [col for col in self._org_cols if col not in removed_cols]
 
     def transform(self, input_df: XDataFrame) -> XDataFrame:
         """Transform data frame.
@@ -300,6 +325,80 @@ class KarunruConstantFeatureEliminator(SelectorMixin):
             XDataFrame : Output data frame.
         """
         return input_df[self._selected_cols]
+
+
+class NullImportanceFeatureEliminator(SelectorMixin):
+    """Mixin class for `xfeat.selector`."""
+
+    def __init__(self, path, not_remove_cols):
+        """[summary]."""
+        self.null_imp_score_path = path
+        self.not_remove_cols = not_remove_cols
+        self.null_imp_score_df = (
+            cudf.read_csv(self.null_imp_score_path)
+            .groupby("features", sort=True)
+            .mean()
+            .reset_index()
+            .to_pandas()
+        )
+        self.use_cols = list(
+            set(
+                self.null_imp_score_df.sort_values("gain_score", ascending=False).head(
+                    500
+                )["features"]
+            )
+            | set(
+                self.null_imp_score_df.sort_values("cover_score", ascending=False).head(
+                    500
+                )["features"]
+            )
+            | set(
+                self.null_imp_score_df.sort_values(
+                    "weight_score", ascending=False
+                ).head(500)["features"]
+            )
+            | set(
+                self.null_imp_score_df.sort_values(
+                    "total_gain_score", ascending=False
+                ).head(500)["features"]
+            )
+            | set(
+                self.null_imp_score_df.sort_values(
+                    "total_cover_score", ascending=False
+                ).head(500)["features"]
+            )
+        )
+
+    def fit(self, input_df: XDataFrame) -> None:
+        """Fit to data frame.
+
+        Args:
+            input_df (XDataFrame): Input data frame.
+        """
+        self._selected_cols = (
+            list(set(input_df.columns) & set(self.use_cols)) + self.not_remove_cols
+        )
+
+    def transform(self, input_df: XDataFrame) -> XDataFrame:
+        """Transform data frame.
+
+        Args:
+            input_df (XDataFrame): Input data frame.
+        Returns:
+            XDataFrame : Output data frame.
+        """
+        return input_df[self._selected_cols]
+
+    def fit_transform(self, input_df: XDataFrame) -> XDataFrame:
+        """Fit to data frame, then transform it.
+
+        Args:
+            input_df (XDataFrame): Input data frame.
+        Returns:
+            XDataFrame : Output data frame.
+        """
+        self.fit(input_df)
+        return self.transform(input_df)
 
 
 def default_feature_selector():

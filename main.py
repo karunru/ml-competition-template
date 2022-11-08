@@ -1,6 +1,7 @@
 import datetime
 import gc
 import logging
+import os
 import pickle
 import sys
 import warnings
@@ -11,34 +12,56 @@ import cudf
 import cupy as cp
 import lightgbm as lgb
 import matplotlib.pyplot as plt
+import neptune.new as neptune
 import numpy as np
 import pandas as pd
 import rmm
 import seaborn as sns
+import torch.cuda
 from pandarallel import pandarallel
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import MinMaxScaler
-from tqdm import tqdm
-from xfeat import (ConstantFeatureEliminator, DuplicatedFeatureEliminator,
-                   SpearmanCorrelationEliminator)
-
 from src.evaluation import calc_metric, pr_auc
-from src.features import (Area, Basic, GroupbyPlaceID, GroupbyYear,
-                          generate_features, load_features)
+from src.features import Basic, Target, generate_features, load_features
 from src.models import get_model
-from src.utils import (configure_logger, delete_duplicated_columns,
-                       feature_existence_checker, get_preprocess_parser,
-                       load_config, load_pickle, make_submission,
-                       merge_by_concat, plot_feature_importance,
-                       reduce_mem_usage, save_json, save_pickle,
-                       seed_everything, slack_notify, timer)
+from src.utils import (
+    configure_logger,
+    delete_duplicated_columns,
+    feature_existence_checker,
+    get_preprocess_parser,
+    load_config,
+    load_pickle,
+    make_submission,
+    merge_by_concat,
+    plot_feature_importance,
+    reduce_mem_usage,
+    save_json,
+    save_pickle,
+    seed_everything,
+    slack_notify,
+    timer,
+)
 from src.utils.visualization import plot_pred_density
-from src.validation import (KarunruSpearmanCorrelationEliminator,
-                            default_feature_selector, get_validation,
-                            remove_correlated_features, remove_ks_features,
-                            select_top_k_features)
-from src.validation.feature_selection import KarunruConstantFeatureEliminator
+from src.validation import (
+    KarunruSpearmanCorrelationEliminator,
+    default_feature_selector,
+    get_validation,
+    remove_correlated_features,
+    remove_ks_features,
+    select_top_k_features,
+)
+from src.validation.feature_selection import (
+    KarunruConstantFeatureEliminator,
+    NullImportanceFeatureEliminator,
+)
+from tqdm import tqdm
+from tqdm.auto import tqdm
+from xfeat import (
+    ConstantFeatureEliminator,
+    DuplicatedFeatureEliminator,
+    SpearmanCorrelationEliminator,
+)
 
 if __name__ == "__main__":
     # Set RMM to allocate all memory as managed memory (cudaMallocManaged underlying allocator)
@@ -61,6 +84,15 @@ if __name__ == "__main__":
     config = load_config(args.config)
     configure_logger(args.config, log_dir=args.log_dir, debug=args.debug)
 
+    is_not_all_data = "Target" in config["features"]
+
+    run = neptune.init(
+        project="karunru/amex-default-prediction"
+        if is_not_all_data
+        else "karunru/amex-default-prediction-all-data",
+        api_token=os.environ["NEPTUNE_API_TOKEN"],
+    )
+
     seed_everything(config["seed_everything"])
 
     logging.info(f"config: {args.config}")
@@ -74,6 +106,7 @@ if __name__ == "__main__":
     feature_dir = Path(config["dataset"]["feature_dir"])
 
     config_name = args.config.split("/")[-1].replace(".yml", "")
+    config["run_num"] = str(config_name)[:3]
     output_dir = output_root_dir / config_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -135,21 +168,7 @@ if __name__ == "__main__":
                 x_test[pred] = np.load("output/" + pred + "/test_preds.npy")
 
     with timer("make target and remove cols"):
-        y_train = x_train[config["target"]].values.reshape(-1)
-        y_train = np.log1p(y_train)
-
-        if config["pre_process"]["do"]:
-            col = config["pre_process"]["col"]
-            y_train = x_train[config["target"]].values.reshape(-1) / x_train[
-                col
-            ].values.reshape(-1)
-            y_train = np.log1p(y_train)
-
-        if config["pre_process"]["xentropy"]:
-            scaler = MinMaxScaler()
-            y_train = scaler.fit_transform(y_train.reshape(-1, 1)).reshape(-1)
-        else:
-            scaler = None
+        y_train = x_train[config["target"]].to_cupy().reshape(-1)
 
         cols: List[str] = x_train.columns.tolist()
         with timer("remove col"):
@@ -158,7 +177,10 @@ if __name__ == "__main__":
                 if not config["stacking"]["use_org_cols"]:
                     remove_cols += org_cols
             cols = [col for col in cols if col not in remove_cols]
-            x_train, x_test = x_train[cols], x_test[cols]
+            x_train, x_test = (
+                x_train[cols],
+                x_test[[col for col in cols if col != config["target"]]],
+            )
 
     assert len(x_train) == len(y_train)
     logging.debug(f"number of features: {len(cols)}")
@@ -172,8 +194,9 @@ if __name__ == "__main__":
         if not config["stacking"]["do"]:
             if config["feature_selection"]["top_k"]["do"]:
                 use_cols = select_top_k_features(config["feature_selection"]["top_k"])
-                use_cols = [col for col in use_cols if "_TE" not in col]
-                use_cols.append("PlaceID")
+                use_cols = [col for col in use_cols if "_TE" not in col] + [
+                    config["val"]["params"]["id"]
+                ]
                 x_train, x_test = x_train[use_cols], x_test[use_cols]
             else:
                 with timer("Feature Selection by ConstantFeatureEliminator"):
@@ -181,43 +204,74 @@ if __name__ == "__main__":
                     x_train = selector.fit_transform(x_train)
                     x_test = selector.transform(x_test)
                     assert len(x_train.columns) == len(x_test.columns)
-                    logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
+                    logging.info(
+                        f"Removed features : {set(cols) - set(x_train.columns)}"
+                    )
                     print(f"Removed features : {set(cols) - set(x_train.columns)}")
                     cols = x_train.columns.tolist()
+                    gc.collect()
+                    torch.cuda.empty_cache()
+
+                with timer("Feature Selection by Null Importance"):
+                    if config["feature_selection"]["NullImportance"]["do"]:
+                        selector = NullImportanceFeatureEliminator(
+                            path=config["feature_selection"]["NullImportance"]["path"],
+                            not_remove_cols=config["feature_selection"][
+                                "not_remove_cols"
+                            ],
+                        )
+                        x_train = selector.fit_transform(x_train)
+                        x_test = selector.transform(x_test)
+                        assert len(x_train.columns) == len(x_test.columns)
+                        logging.info(
+                            f"Removed features : {set(cols) - set(x_train.columns)}"
+                        )
+                    print(f"Removed features : {set(cols) - set(x_train.columns)}")
+                    cols = x_train.columns.tolist()
+                    gc.collect()
+                    torch.cuda.empty_cache()
 
                 with timer("Feature Selection by SpearmanCorrelationEliminator"):
-                    selector = KarunruSpearmanCorrelationEliminator(
-                        threshold=config["feature_selection"]["SpearmanCorrelation"][
-                            "threshold"
-                        ],
-                        dry_run=config["feature_selection"]["SpearmanCorrelation"][
-                            "dryrun"
-                        ],
-                        not_remove_cols=config["feature_selection"]["SpearmanCorrelation"][
-                            "not_remove_cols"
-                        ]
-                        if config["feature_selection"]["SpearmanCorrelation"][
-                            "not_remove_cols"
-                        ][0]
-                        != ""
-                        else [],
-                    )
-                    x_train = selector.fit_transform(x_train)
-                    x_test = selector.transform(x_test)
-                    assert len(x_train.columns) == len(x_test.columns)
-                    logging.info(f"Removed features : {set(cols) - set(x_train.columns)}")
-                    print(f"Removed features : {set(cols) - set(x_train.columns)}")
-                    cols = x_train.columns.tolist()
+                    if config["feature_selection"]["SpearmanCorrelation"]["do"]:
+                        selector = KarunruSpearmanCorrelationEliminator(
+                            threshold=config["feature_selection"][
+                                "SpearmanCorrelation"
+                            ]["threshold"],
+                            dry_run=config["feature_selection"]["SpearmanCorrelation"][
+                                "dryrun"
+                            ],
+                            not_remove_cols=config["feature_selection"][
+                                "not_remove_cols"
+                            ]
+                            if config["feature_selection"]["not_remove_cols"][0] != ""
+                            else [],
+                        )
+                        x_train = selector.fit_transform(x_train)
+                        x_test = selector.transform(x_test)
+                        assert len(x_train.columns) == len(x_test.columns)
+                        logging.info(
+                            f"Removed features : {set(cols) - set(x_train.columns)}"
+                        )
+                        print(f"Removed features : {set(cols) - set(x_train.columns)}")
+                        cols = x_train.columns.tolist()
+                        gc.collect()
+                        torch.cuda.empty_cache()
 
                 with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
                     if config["feature_selection"]["Kolmogorov-Smirnov"]["do"]:
-                        number_cols = x_train[cols].select_dtypes(include="number").columns
+                        number_cols = (
+                            x_train[cols].select_dtypes(include="number").columns
+                        )
                         to_remove = remove_ks_features(
-                            x_train[number_cols], x_test[number_cols], number_cols
+                            x_train[number_cols].to_pandas(),
+                            x_test[number_cols].to_pandas(),
+                            number_cols,
                         )
                         logging.info(f"Removed features : {to_remove}")
                         print(f"Removed features : {to_remove}")
                         cols = [col for col in cols if col not in to_remove]
+                        gc.collect()
+                        torch.cuda.empty_cache()
 
         cols = x_train.columns.tolist()
         categorical_cols = [col for col in categorical_cols if col in cols]
@@ -229,6 +283,7 @@ if __name__ == "__main__":
 
     # get folds
     with timer("Train model"):
+        run["config"] = config
         with timer("get validation"):
             x_train["binned_target"] = pd.qcut(
                 y_train,
@@ -256,7 +311,8 @@ if __name__ == "__main__":
             valid_features=None,
             feature_name=cols,
             folds_ids=splits,
-            target_scaler=scaler,
+            target_scaler=None,
+            neptune_runner=run,
             config=config,
         )
 
@@ -276,15 +332,14 @@ if __name__ == "__main__":
         config["eval_results"][k] = v
     save_path = output_dir / "output.json"
     save_json(config, save_path)
+    run["config"] = config
 
     plot_feature_importance(feature_importance, output_dir / "feature_importance.png")
 
     plot_pred_density(
-        np.log1p(np.expm1(y_train) * x_train[config["pre_process"]["col"]])
-        if config["pre_process"]["do"]
-        else y_train,
-        np.log1p(oof_preds),
-        np.log1p(test_preds),
+        y_train.get(),
+        oof_preds,
+        test_preds,
         output_dir / "pred_density.png",
     )
 

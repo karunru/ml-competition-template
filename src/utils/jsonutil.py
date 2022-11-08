@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Union
 
+import cupy as cp
 import numpy as np
 
 
@@ -13,6 +14,8 @@ class MyEncoder(json.JSONEncoder):
         elif isinstance(obj, np.floating):
             return float(obj)
         elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, cp.ndarray):
             return obj.tolist()
         else:
             return super(MyEncoder, self).default(obj)

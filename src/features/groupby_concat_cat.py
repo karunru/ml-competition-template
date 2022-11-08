@@ -6,8 +6,7 @@ import pandas as pd
 from src.features.base import Feature
 from src.utils import reduce_mem_usage, timer
 
-from .modules import (DiffGroupbyTransformer, GroupbyTransformer,
-                      RatioGroupbyTransformer)
+from .modules import DiffGroupbyTransformer, GroupbyTransformer, RatioGroupbyTransformer
 
 
 class GroupbyConcatCat(Feature):

@@ -17,7 +17,7 @@ class RegularizedGreedyForest(BaseModel):
         x_valid: np.ndarray,
         y_valid: np.ndarray,
         config: dict,
-        **kwargs
+        **kwargs,
     ) -> Tuple[RGFModel, dict]:
         model_params = config["model"]["model_params"]
         mode = config["model"]["train_params"]["mode"]

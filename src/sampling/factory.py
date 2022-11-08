@@ -2,13 +2,15 @@ import datetime
 import logging
 from typing import Optional, Tuple, Union
 
+import cudf
+import cupy as cp
 import numpy as np
 import pandas as pd
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
-
 from src.utils import timer
 from xfeat.types import XDataFrame, XSeries
+from xfeat.utils import is_cudf
 
 AoD = Union[np.ndarray, XDataFrame]
 AoS = Union[np.ndarray, XSeries]
@@ -83,11 +85,8 @@ def random_under_sample(
     x_trn: np.ndarray, y_trn: np.ndarray, config: dict
 ) -> Tuple[np.ndarray, np.ndarray]:
     params = config["model"]["sampling"]["params"]
-    acc_0 = (y_trn == 0).sum().astype(int)
-    acc_1 = (y_trn == 1).sum().astype(int)
 
     rus = RandomUnderSampler(
-        acc_1 / acc_0,
         random_state=params["random_state"],
     )
     sampled_x, sampled_y = rus.fit_resample(x_trn, y_trn)
@@ -110,4 +109,14 @@ def get_sampling(x_trn: XDataFrame, y_trn: AoS, config: dict) -> Tuple[AoD, AoS]
     func = globals().get(policy)
     if func is None:
         raise NotImplementedError
-    return func(x_trn, y_trn, config)
+
+    X, y = func(
+        x_trn.to_pandas() if is_cudf(x_trn) else x_trn,
+        y_trn.get() if isinstance(y_trn, cp.ndarray) else y_trn,
+        config,
+    )
+
+    return (
+        cudf.from_pandas(X) if is_cudf(x_trn) else X,
+        cp.asarray(y) if isinstance(y_trn, cp.ndarray) else y,
+    )

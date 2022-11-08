@@ -36,8 +36,7 @@ class ConcatCategory(Feature):
             new_cat_df = cudf.concat(
                 [
                     xfeat.ConcatCombination(drop_origin=True, r=r).fit_transform(
-                        total[cat_cols].astype(str
-                                               ).fillna("none")
+                        total[cat_cols].astype(str).fillna("none")
                     )
                     for r in [2, 3, 4]
                 ],

@@ -1,10 +1,9 @@
 import os
 import random
 
+import cupy as cp
 import numpy as np
 import torch
-
-import cupy as cp
 
 
 def seed_everything(seed=1234):

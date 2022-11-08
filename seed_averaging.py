@@ -7,12 +7,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from tqdm import tqdm
-
 from src.evaluation.metrics import rmsle
 from src.models.base import LGBModel
-from src.utils import (get_seed_average_parser, load_pickle, make_submission,
-                       save_json)
+from src.utils import get_seed_average_parser, load_pickle, make_submission, save_json
+from tqdm import tqdm
 
 if __name__ == "__main__":
 

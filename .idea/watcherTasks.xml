@@ -19,7 +19,9 @@
       <option name="scopeName" value="Project Files" />
       <option name="trackOnlyRoot" value="false" />
       <option name="workingDir" value="" />
-      <envs />
+      <envs>
+        <env name="PYSEN_IGNORE_GIT" value="1" />
+      </envs>
     </TaskOptions>
   </component>
 </project>

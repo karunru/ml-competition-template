@@ -7,12 +7,12 @@ from xfeat.types import XDataFrame, XSeries
 
 from .base import BaseModel
 
-RidgeModel = Union[cuml.Ridge]
+SVMModel = Union[cuml.SVR, cuml.SVC]
 AoD = Union[np.ndarray, XDataFrame]
 AoS = Union[np.ndarray, XSeries]
 
 
-class Ridge(BaseModel):
+class SVM(BaseModel):
     config = dict()
 
     def fit(
@@ -23,7 +23,7 @@ class Ridge(BaseModel):
         y_valid: AoS,
         config: dict,
         **kwargs,
-    ) -> Tuple[RidgeModel, dict]:
+    ) -> Tuple[SVMModel, dict]:
         model_params = config["model"]["model_params"]
 
         categorical_cols = config["categorical_cols"]
@@ -34,31 +34,50 @@ class Ridge(BaseModel):
                 x_train[col] = x_train[col].cat.codes
                 x_valid[col] = x_valid[col].cat.codes
 
+        x_train, x_valid, _ = self.pre_process_for_liner_model(
+            cat_cols=categorical_cols,
+            x_train=x_train,
+            x_valid=x_valid,
+            x_valid2=None,
+        )
+
         mode = config["model"]["mode"]
         self.mode = mode
 
+        if mode == "regression":
+            model = cuml.SVR(**model_params)
+        else:
+            model = cuml.SVC(**model_params)
+
         self.num_feats = len(x_train.columns)
 
-        model = cuml.Ridge(**model_params)
-
-        model.fit(x_train.values, y_train)
-        best_score = {"valid_score": model.score(x_valid.values, y_valid)}
-
+        model.fit(
+            x_train,
+            y_train,
+        )
+        best_score = {"valid_score": model.score(x_valid, y_valid)}
         return model, best_score
 
     def predict(
-        self, model: RidgeModel, features: Union[pd.DataFrame, np.ndarray]
+        self, model: SVMModel, features: Union[pd.DataFrame, np.ndarray]
     ) -> np.ndarray:
         for col in self.config["categorical_cols"]:
             if features[col].dtype.name == "category":
                 features[col] = features[col].cat.codes
 
-        return model.predict(
-            features.values,
+        features, _, _ = self.pre_process_for_liner_model(
+            cat_cols=self.config["categorical_cols"],
+            x_train=features,
+            x_valid=None,
+            x_valid2=None,
         )
 
-    def get_best_iteration(self, model: RidgeModel) -> int:
+        return model.predict_proba(
+            features,
+        )
+
+    def get_best_iteration(self, model: SVMModel) -> int:
         return 0
 
-    def get_feature_importance(self, model: RidgeModel) -> np.ndarray:
+    def get_feature_importance(self, model: SVMModel) -> np.ndarray:
         return np.zeros(self.num_feats)

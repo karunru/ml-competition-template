@@ -1,8 +1,10 @@
 import gc
 import itertools
+from abc import ABC, abstractmethod
 from typing import Dict, List, Union
 
 import cudf
+import cupy
 import gensim.downloader
 import nltk
 import numpy as np
@@ -11,18 +13,24 @@ import tensorflow as tf
 import tensorflow_hub as hub
 import torch
 import transformers
-from gensim.models import word2vec
+import xfeat.utils
+from cuml.decomposition import PCA, TruncatedSVD
+from cuml.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from cupyx.scipy.sparse import vstack
+from gensim.models import Word2Vec, word2vec
 from gensim.models.doc2vec import Doc2Vec, TaggedDocument
 from keras.preprocessing.text import text_to_word_sequence
-from sklearn.decomposition import LatentDirichletAllocation, TruncatedSVD
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.model_selection import KFold, StratifiedKFold
 from src.utils import timer
 from tqdm import tqdm
-from transformers import (AutoModelForSeq2SeqLM, AutoTokenizer, BertTokenizer,
-                          pipeline)
+from tqdm.auto import tqdm
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, BertTokenizer, pipeline
 from xfeat.types import XDataFrame
 from xfeat.utils import is_cudf
+
+tqdm.pandas()
 
 """https://github.com/okotaku/pet_finder/blob/master/code/all_tools.py
 """
@@ -249,6 +257,248 @@ class CategoryVectorizer:
         ]
 
     def get_numerical_features(self) -> List:
+        return self.columns
+
+
+class BaseFeatureTransformer(ABC, BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+
+    def __call__(self, dataframe):
+        return self.transform(dataframe)
+
+    def fit(self, X):
+        return self
+
+    @abstractmethod
+    def transform(self, dataframe):
+        raise NotImplementedError
+
+    def get_categorical_features(self):
+        return []
+
+    def get_numerical_features(self):
+        return []
+
+
+class CategoryUser2Vec(BaseFeatureTransformer):
+    """
+    Encodes sequence of bag of category (including target) per a "user".
+    https://github.com/Ynakatsuka/kaggle_utils/blob/master/kaggle_utils/features/category_embedding.py
+    """
+
+    def __init__(
+        self,
+        categorical_columns,
+        key,
+        n_components,
+        vectorizer=CountVectorizer(),
+        transformer=LatentDirichletAllocation(),
+        name="CountLDA",
+    ):
+        self.categorical_columns = categorical_columns
+        self.key = key
+        self.n_components = n_components
+        self.vocabulary = set()
+        self.vectorizer = vectorizer
+        self.transformer = transformer
+        self.name = name + str(self.n_components)
+
+    def transform(self, dataframe: cudf.DataFrame):
+        # preprocess
+        df = dataframe[self.key + self.categorical_columns].copy()
+        df[self.categorical_columns].fillna(-1, inplace=True)
+        df = xfeat.utils.compress_df(df, verbose=True)
+        df["__user_id"] = ""
+        for c in self.key:
+            df["__user_id"] += c + df[c].astype(str) + " "
+        gc.collect()
+        df["__user_document"] = ""
+        __user_document = df["__user_document"].to_pandas().copy()
+        for c in tqdm(self.categorical_columns):
+            c_series = (
+                c.replace("denoise_", "")
+                + "_"
+                + df[c].astype(str).to_pandas().replace("-1", "none")
+                + " "
+            )
+            del df[c]
+            gc.collect()
+            __user_document += c_series
+        df["__user_document"] = __user_document
+        del __user_document
+        df = df[self.key + ["__user_id", "__user_document"]]
+        gc.collect()
+
+        # vectorize
+        documents, user_ids = self.create_documents(df)
+        del df["__user_document"]
+        gc.collect()
+        documents = self.vectorizer.fit_transform(documents)
+        feature = self.transformer.fit_transform(documents.toarray())
+        feature = self.get_feature(df, feature, name=self.name)
+        feature["__user_id"] = user_ids
+        feature = (
+            cudf.merge(
+                feature,
+                df[["__user_id"] + self.key],
+                how="left",
+                on="__user_id",
+                sort=True,
+            )
+            .drop_duplicates(subset=self.key)[self.key + self.columns]
+            .reset_index(drop=True)
+        )
+
+        # # merge
+        # df = df.merge(feature, on="__user_id", how="left", sort=True).reset_index(drop=True)[
+        #     self.columns
+        # ]
+        # self.features = [df]
+        # dataframe = cudf.concat([dataframe, df], axis=1)
+
+        return feature
+
+    def chunk_vectorizer(self, documents, chunk_size=2):
+        chunk = len(documents) // chunk_size
+        vocabulary = cudf.Series(self.vocabulary).sort_values()
+        vectorizer = eval(self.vectorizer)(vocabulary=vocabulary)
+
+        vectors = []
+        for i in range(chunk_size):
+            vectors.append(
+                vectorizer.fit_transform(
+                    (documents.iloc[i * chunk : min((i + 1) * chunk, len(documents))])
+                )
+            )
+            gc.collect()
+
+        return vstack(vectors)
+
+    def get_feature(self, dataframe, latent_vector, name=""):
+        self.columns = [
+            "_".join([name, "category_user2vec", str(i)])
+            for i in range(self.n_components)
+        ]
+        return cudf.DataFrame(latent_vector, columns=self.columns)
+
+    def create_documents(self, dataframe: cudf.DataFrame):
+        g = dataframe.groupby(["__user_id"], sort=True)
+        documents = (
+            g["__user_document"]
+            .collect()
+            .astype(str)
+            .str.replace("[", "")
+            .str.replace("]", "")
+        )
+        user_ids = g["__user_document"].last().reset_index()["__user_id"]
+        return documents, user_ids
+
+    def get_numerical_features(self):
+        return self.columns
+
+
+class CategoryUser2VecWithW2V(CategoryUser2Vec):
+    """
+    Encodes sequence of bag of category (including target) per a "user".
+    """
+
+    def __init__(
+        self,
+        categorical_columns,
+        key,
+        n_components,
+        w2v_params={
+            "window": 3,
+            "min_count": 1,
+            "workers": 16,
+            "epochs": 10,
+        },
+        name="W2V",
+    ):
+        if len(categorical_columns) > 1:
+            raise ValueError("Number of encoding features should be 1.")
+        self.categorical_columns = categorical_columns
+        self.key = key
+        self.n_components = n_components
+        self.w2v_params = w2v_params
+        self.w2v_params["vector_size"] = n_components
+        self.name = name + str(self.n_components)
+
+    def transform(self, dataframe):
+        # preprocess
+        df = dataframe[self.key + self.categorical_columns].copy()
+        df[self.categorical_columns].fillna(-1, inplace=True)
+        # df = xfeat.utils.compress_df(df, verbose=True)
+        df["__user_id"] = ""
+        for c in self.key:
+            df["__user_id"] += c + df[c].astype(str) + " "
+        gc.collect()
+        df["__user_document"] = ""
+        __user_document = df["__user_document"].to_pandas().copy()
+        for c in self.categorical_columns:
+            c_series = (
+                c.replace("denoise_", "")
+                + "_"
+                + df[c].astype(str).to_pandas().replace("-1", "none")
+                + " "
+            )
+            del df[c]
+            gc.collect()
+            __user_document += c_series
+        df["__user_document"] = __user_document
+        del __user_document
+        df = df[self.key + ["__user_id", "__user_document"]]
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        # vectorize
+        documents, user_ids = self.create_documents(df)
+        w2v = Word2Vec(
+            [list(val) for val in documents.to_pandas().to_list()], **self.w2v_params
+        )
+        vocab_keys = w2v.wv.index_to_key
+        w2v_array = np.zeros((len(vocab_keys), self.n_components))
+        for i, v in enumerate(vocab_keys):
+            w2v_array[i, :] = w2v.wv[v]
+        vocab_vectors = cudf.DataFrame(w2v_array.T, columns=vocab_keys)
+        del w2v
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        # vocab_keys -> aggregate by key
+        self.columns = [
+            "_".join([self.name, "category_user2vec", g, str(i)])
+            for g in ["mean", "std", "median", "min", "max", "sum"]
+            for i in range(self.n_components)
+        ]
+        features = (
+            df[self.key + ["__user_document"]]
+            .merge(
+                vocab_vectors.T, how="left", left_on="__user_document", right_index=True
+            )
+            .drop("__user_document", axis="columns")
+            .groupby(self.key, sort=True)
+            .agg(["mean", "std", "median", "min", "max", "sum"])
+        )
+        features.columns = self.columns
+
+        # # merge
+        # df = df.merge(feature, on="__user_id", how="left").reset_index(drop=True)[
+        #     self.columns
+        # ]
+        # self.features = [df]
+        # dataframe = pd.concat([dataframe, df], axis=1)
+
+        return features
+
+    def create_documents(self, dataframe: cudf.DataFrame):
+        g = dataframe.groupby(["__user_id"], sort=True)
+        documents = g["__user_document"].collect()
+        user_ids = g["__user_document"].last().reset_index()["__user_id"]
+        return documents, user_ids
+
+    def get_numerical_features(self):
         return self.columns
 
 
@@ -686,10 +936,11 @@ class GroupedCategoriesWord2VecFeatureTransformer:
 
             w2v_model = word2vec.Word2Vec(
                 grouped_dataframe[c].values.tolist(),
-                size=self.w2v_size,
+                vector_size=self.w2v_size,
                 min_count=1,
                 window=1,
-                iter=100,
+                epochs=100,
+                workers=8,
             )
             features = pd.DataFrame()
 

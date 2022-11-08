@@ -87,5 +87,7 @@ class Basic(Feature):
                 "Other_Sales",
                 "Global_Sales",
             ]
-            self.train = total[basic_cols + target_cols].iloc[:len_train].reset_index(drop=True)
+            self.train = (
+                total[basic_cols + target_cols].iloc[:len_train].reset_index(drop=True)
+            )
             self.test = total[basic_cols].iloc[len_train:].reset_index(drop=True)

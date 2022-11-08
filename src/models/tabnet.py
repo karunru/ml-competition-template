@@ -2,7 +2,6 @@ from typing import Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-
 from pytorch_tabnet.tab_model import TabNetClassifier, TabNetRegressor
 from xfeat.types import XDataFrame, XSeries
 
@@ -23,7 +22,7 @@ class TabNet(BaseModel):
         x_valid: AoD,
         y_valid: AoS,
         config: dict,
-        **kwargs
+        **kwargs,
     ) -> Tuple[TabNetModel, dict]:
         model_params = config["model"]["model_params"]
         train_params = config["model"]["train_params"]

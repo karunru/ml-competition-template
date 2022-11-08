@@ -3,7 +3,6 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import ExtraTreesClassifier, ExtraTreesRegressor
-
 from xfeat.types import XDataFrame, XSeries
 
 from .base import BaseModel
@@ -21,7 +20,7 @@ class ExtremelyRandomizedTrees(BaseModel):
         x_valid: AoD,
         y_valid: AoS,
         config: dict,
-        **kwargs
+        **kwargs,
     ) -> Tuple[ERTModel, dict]:
         model_params = config["model"]["model_params"]
         self.mode = config["model"]["train_params"]["mode"]

@@ -1,16 +1,19 @@
 import datetime
+import os
 import random
 from collections import Counter, defaultdict
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
-import cudf
+# import cudf
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig, ListConfig
 from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from xfeat.utils import is_cudf
 
 
 def validation_refinement_by_day_of_week(
-    df: pd.DataFrame, config: dict
+    df: pd.DataFrame, config: Union[DictConfig, ListConfig]
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     pred_day = config["val"]["params"]["pred_day"]
     splits = slide_window_split_by_day(df["date"], config)
@@ -31,7 +34,7 @@ def validation_refinement_by_day_of_week(
 # https://eng.uber.com/omphalos/
 # https://www.kaggle.com/harupy/m5-baseline?scriptVersionId=30229819
 def slide_window_split_by_day(
-    day_series: pd.Series, config: dict
+    day_series: pd.Series, config: Union[DictConfig, ListConfig]
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     params = config["val"]["params"]
 
@@ -88,7 +91,7 @@ def slide_window_split_by_day(
 
 
 def date_hold_out(
-    df: pd.DataFrame, config: dict
+    df: pd.DataFrame, config: Union[DictConfig, ListConfig]
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     params = config["val"]["params"]
     date_col = params["date_col"]
@@ -109,7 +112,9 @@ def date_hold_out(
     return split
 
 
-def kfold(df: pd.DataFrame, config: dict) -> List[Tuple[np.ndarray, np.ndarray]]:
+def kfold(
+    df: pd.DataFrame, config: Union[DictConfig, ListConfig]
+) -> List[Tuple[np.ndarray, np.ndarray]]:
     params = config["val"]["params"]
     kf = KFold(
         n_splits=params["n_splits"], random_state=params["random_state"], shuffle=True
@@ -121,7 +126,7 @@ def kfold(df: pd.DataFrame, config: dict) -> List[Tuple[np.ndarray, np.ndarray]]
 
 
 def group_kfold(
-    df: pd.DataFrame, groups: pd.Series, config: dict
+    df: pd.DataFrame, groups: pd.Series, config: Union[DictConfig, ListConfig]
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     params = config["val"]["params"]
     kf = KFold(
@@ -140,7 +145,7 @@ def group_kfold(
 
 
 def stratified_kfold(
-    df: pd.DataFrame, config: dict
+    df: pd.DataFrame, config: Union[DictConfig, ListConfig]
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     params = config["val"]["params"]
 
@@ -148,7 +153,11 @@ def stratified_kfold(
         n_splits=params["n_splits"], random_state=params["random_state"], shuffle=True
     )
 
-    y = df[params["target"]].to_array() if isinstance(df, cudf.DataFrame) else np.array(df[params["target"]])
+    y = (
+        df[params["target"]].to_numpy()
+        if is_cudf(df)
+        else np.array(df[params["target"]])
+    )
     X_col = [col for col in df.columns.to_list() if col is not params["target"]]
     split = []
     for trn_idx, val_idx in skf.split(df[X_col], y):
@@ -157,15 +166,19 @@ def stratified_kfold(
 
 
 def stratified_group_kfold(
-    df: pd.DataFrame, groups: pd.Series, config: dict
+    df: pd.DataFrame, groups: pd.Series, config: Union[DictConfig, ListConfig]
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
     params = config["val"]["params"]
 
-    y = np.array(df[params["target"]])
+    y = df[params["target"]]
     X_col = [col for col in df.columns.to_list() if col is not params["target"]]
     split = []
     for trn_idx, val_idx in _stratified_group_k_fold(
-        df[X_col], y, groups, k=params["n_splits"], seed=params["random_state"]
+        df[X_col],
+        y.to_numpy(),
+        groups.to_numpy(),
+        k=params["n_splits"],
+        seed=params["random_state"],
     ):
         split.append((np.asarray(trn_idx), np.asarray(val_idx)))
     return split
@@ -219,17 +232,70 @@ def _stratified_group_k_fold(X, y, groups, k, seed=42):
 
 
 def get_validation(
-    df: pd.DataFrame, config: dict
+    df: pd.DataFrame, config: Union[DictConfig, ListConfig], is_pseudo_label=False
 ) -> List[Tuple[np.ndarray, np.ndarray]]:
-    name: str = config["val"]["name"]
+    fold_file_path = (
+        config["root"]
+        + "/"
+        + config["val"]["name"]
+        + "_n_splits_"
+        + str(config["val"]["params"]["n_splits"])
+        + "_target_"
+        + str(config["val"]["params"]["target"])
+        + "_random_state_"
+        + str(config["val"]["params"]["random_state"])
+        + f"{'_pseudo_label' if is_pseudo_label else ''}"
+        + ".csv"
+    )
+    _df = df.copy()
 
-    func = globals().get(name)
-    if func is None:
-        raise NotImplementedError
+    if os.path.exists(fold_file_path) and not config["val"]["params"]["force_recreate"]:
+        print(f"load {fold_file_path}")
 
-    if "group" in name:
-        groups_col = config["val"]["params"]["group"]
-        groups = df[groups_col]
-        return func(df, groups, config)
+        fold_df = cudf.read_csv(fold_file_path)
+
+        split = []
+        for fold in range(config["val"]["params"]["n_splits"]):
+            trn_ids = fold_df.loc[
+                fold_df["fold"] != fold, config["val"]["params"]["id"]
+            ]
+            trn_idx = _df[_df[config["val"]["params"]["id"]].isin(trn_ids)].index.values
+            val_ids = fold_df.loc[
+                fold_df["fold"] == fold, config["val"]["params"]["id"]
+            ]
+            val_idx = _df[_df[config["val"]["params"]["id"]].isin(val_ids)].index.values
+            if is_cudf(_df):
+                split.append((np.asarray(trn_idx.get()), np.asarray(val_idx.get())))
+            else:
+                split.append((np.asarray(trn_idx), np.asarray(val_idx)))
+
     else:
-        return func(df, config)
+        print(f"make {fold_file_path}")
+
+        name: str = config["val"]["name"]
+
+        func = globals().get(name)
+        if func is None:
+            raise NotImplementedError
+
+        if "group" in name:
+            groups_col = config["val"]["params"]["group"]
+            groups = _df[groups_col]
+            split = func(_df, groups, config)
+        else:
+            split = func(_df, config)
+
+        _df["fold"] = -1
+        for fold, (train_idx, val_idx) in enumerate(split):
+            _df.loc[val_idx, "fold"] = fold
+
+        if isinstance(config["val"]["params"]["id"], list):
+            _df[config["val"]["params"]["id"] + ["fold"]].to_csv(
+                fold_file_path, index=False
+            )
+        else:
+            _df[[config["val"]["params"]["id"], "fold"]].to_csv(
+                fold_file_path, index=False
+            )
+
+    return split

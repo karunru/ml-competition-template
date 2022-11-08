@@ -1,7 +1,7 @@
+from typing import Dict, List, Union
+
 import numpy as np
 import pandas as pd
-
-from typing import Dict, List, Union
 
 from .metrics import calc_metric
 

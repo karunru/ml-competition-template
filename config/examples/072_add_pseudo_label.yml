@@ -1,0 +1,205 @@
+seed_everything: &seed 1031
+
+root: ./others
+
+dataset:
+  dir: input
+  feature_dir: features
+  params:
+
+
+features:
+  - RadderDenoiseBaseline
+  - Target
+  - RadderDenoiseAfterPay
+  - TimeDiff
+  - RoundBaseline
+  - CategoryVectorization
+  - CategoryGroupVectorization
+  - CategoryW2VVectorization
+  - FirstLast
+  - LastLastLag
+  - LastMean
+  - AggAllDataPred
+
+categorical_cols:
+  - count_log
+  - B_30_last
+  - B_38_last
+  - D_114_last
+  - D_116_last
+  - D_117_last
+  - D_120_last
+  - D_126_last
+  - D_63_last
+  - D_64_last
+  - D_66_last
+  - D_68_last
+  - denoise_B_30_last
+  - denoise_B_38_last
+  - denoise_D_114_last
+  - denoise_D_116_last
+  - denoise_D_117_last
+  - denoise_D_120_last
+  - denoise_D_126_last
+  - denoise_D_63_last
+  - denoise_D_64_last
+  - denoise_D_66_last
+  - denoise_D_68_last
+  - denoise_B_16_last
+  - denoise_B_20_last
+  - denoise_B_22_last
+  - denoise_B_31_last
+  - denoise_B_32_last
+  - denoise_B_33_last
+  - denoise_D_103_last
+  - denoise_D_107_last
+  - denoise_D_108_last
+  - denoise_D_109_last
+  - denoise_D_111_last
+  - denoise_D_113_last
+  - denoise_D_122_last
+  - denoise_D_123_last
+  - denoise_D_125_last
+  - denoise_D_127_last
+  - denoise_D_129_last
+  - denoise_D_135_last
+  - denoise_D_136_last
+  - denoise_D_137_last
+  - denoise_D_138_last
+  - denoise_D_139_last
+  - denoise_D_140_last
+  - denoise_D_143_last
+  - denoise_D_145_last
+  - denoise_D_39_last
+  - denoise_D_44_last
+  - denoise_D_51_last
+  - denoise_D_70_last
+  - denoise_D_72_last
+  - denoise_D_74_last
+  - denoise_D_75_last
+  - denoise_D_78_last
+  - denoise_D_79_last
+  - denoise_D_80_last
+  - denoise_D_81_last
+  - denoise_D_82_last
+  - denoise_D_83_last
+  - denoise_D_84_last
+  - denoise_D_86_last
+  - denoise_D_87_last
+  - denoise_D_89_last
+  - denoise_D_91_last
+  - denoise_D_92_last
+  - denoise_D_93_last
+  - denoise_D_94_last
+  - denoise_D_96_last
+  - denoise_R_10_last
+  - denoise_R_11_last
+  - denoise_R_13_last
+  - denoise_R_15_last
+  - denoise_R_16_last
+  - denoise_R_17_last
+  - denoise_R_18_last
+  - denoise_R_19_last
+  - denoise_R_2_last
+  - denoise_R_20_last
+  - denoise_R_21_last
+  - denoise_R_22_last
+  - denoise_R_23_last
+  - denoise_R_24_last
+  - denoise_R_25_last
+  - denoise_R_26_last
+  - denoise_R_28_last
+  - denoise_R_4_last
+  - denoise_R_5_last
+  - denoise_R_8_last
+  - denoise_R_9_last
+  - denoise_S_13_last
+  - denoise_S_18_last
+  - denoise_S_20_last
+  - denoise_S_6_last
+  - denoise_S_8_last
+
+target: target
+
+feature_selection:
+  not_remove_cols:
+      - customer_ID
+  NullImportance:
+    do: True
+    path: notebooks/null_imp_score.csv
+  SpearmanCorrelation:
+    do: False
+    dryrun: False
+    threshold: 0.99
+  top_k:
+    do: False
+    importance: "020_add_after_pay"
+    top_k: 0.5
+  Kolmogorov-Smirnov:
+    do: False
+
+target_encoding: False
+
+pseudo_label_exp: 071_top_500_null_imp
+
+pre_process:
+  do: False
+  col: ""
+  xentropy: False
+
+post_process:
+  do: False
+  col: ""
+
+stacking:
+  do: False
+  use_org_cols: True
+  predictions:
+    - ""
+
+train_folds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+
+model:
+  name: xgb
+
+  model_params:
+    use_rmm: True
+    objective: binary:logistic
+    booster: gbtree
+    tree_method: gpu_hist
+    predictor: gpu_predictor
+    max_depth: 7
+    subsample: 0.7
+    colsample_bytree: 0.1
+    gamma: 1.5
+    min_child_weight: 8
+    lambda: 70
+    eta: 0.03
+    verbosity: 0
+#    scale_pos_weight: 2.861993806173629
+    seed: *seed
+    random_state: *seed
+
+  train_params:
+    num_boost_round: 10000
+    early_stopping_rounds: 500
+    verbose_eval: 100
+
+
+val:
+  name: stratified_kfold
+  params:
+    n_splits: 5
+    id: customer_ID
+    target: target
+    random_state: 1031
+    force_recreate: False
+
+
+output_dir: output

@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="karunru@172.22.1.33:22">
+  <component name="PublishConfigData" autoUpload="Always" serverName="karunru@192.168.11.31:22 key" confirmBeforeUploading="false" showAutoUploadSettingsWarning="false">
+    <option name="confirmBeforeUploading" value="false" />
     <serverData>
-      <paths name="karunru@172.22.1.33:22">
+      <paths name="karunru@192.168.11.31:22 key">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/karunru/Home/Kaggle/ml-competition-template" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/ml-competition-template" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

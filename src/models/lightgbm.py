@@ -3,14 +3,14 @@ import logging
 from collections import defaultdict
 from typing import Optional, Tuple, Union
 
+import lightgbm as lgb
+import neptune.new as neptune
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
-
-import lightgbm as lgb
 from lightgbm import Booster
-from src.evaluation import pr_auc
+from neptune.new.integrations.lightgbm import NeptuneCallback
 from xfeat.types import XDataFrame, XSeries
+from xfeat.utils import is_cudf
 
 from ..evaluation.lgbm import focal_loss_lgb, focal_loss_lgb_eval_error
 from .base import BaseModel
@@ -29,20 +29,28 @@ class LightGBM(BaseModel):
         y_train: AoS,
         x_valid: AoD,
         y_valid: AoS,
+        neptune_runner: Optional[neptune.metadata_containers.run.Run],
         config: dict,
-        **kwargs
+        **kwargs,
     ) -> Tuple[LGBMModel, dict]:
 
         callbacks = [
             log_evaluation_callback(
-                period=config["model"]["train_params"]["verbose_eval"]
+                period=config["model"]["model_params"]["verbosity"]
             ),
         ]
 
-        if "early_stopping_rounds" in config["model"]["train_params"].keys():
+        neptune_callback = (
+            NeptuneCallback(run=neptune_runner, base_namespace=f"fold_{self.fold}")
+            if neptune_runner
+            else None
+        )
+        callbacks.append(neptune_callback)
+
+        if "early_stopping_rounds" in config["model"]["model_params"].keys():
             callbacks += [
                 log_early_stopping(
-                    stopping_rounds=config["model"]["train_params"][
+                    stopping_rounds=config["model"]["model_params"][
                         "early_stopping_rounds"
                     ],
                     first_metric_only=config["model"]["model_params"][
@@ -51,27 +59,17 @@ class LightGBM(BaseModel):
                 )
             ]
 
-        if "adaptive_learning_rate" in config["model"].keys():
-            callbacks += [
-                LrSchedulingCallback(
-                    strategy_func=globals().get(
-                        config["model"]["adaptive_learning_rate"]["method"]
-                    ),
-                    halve_iter=config["model"]["adaptive_learning_rate"]["halve_iter"],
-                    warmup_iter=config["model"]["adaptive_learning_rate"][
-                        "warmup_iter"
-                    ],
-                    start_lr=config["model"]["adaptive_learning_rate"]["start_lr"],
-                    min_lr=config["model"]["adaptive_learning_rate"]["min_lr"],
-                ),
-            ]
-
-        d_train = lgb.Dataset(x_train, label=y_train)
+        d_train = lgb.Dataset(
+            x_train.to_pandas() if is_cudf(x_train) else x_train, label=y_train.get()
+        )
         del x_train, y_train
         gc.collect()
 
         if x_valid is not None:
-            d_valid = lgb.Dataset(x_valid, label=y_valid)
+            d_valid = lgb.Dataset(
+                x_valid.to_pandas() if is_cudf(x_valid) else x_valid,
+                label=y_valid.get(),
+            )
             del x_valid, y_valid
             gc.collect()
 
@@ -84,46 +82,15 @@ class LightGBM(BaseModel):
         lgb_model_params = config["model"]["model_params"]
         lgb_train_params = config["model"]["train_params"]
 
-        if "alpha" in config["model"]["focal_loss"].keys():
-
-            def focal_loss(x, y):
-                return focal_loss_lgb(
-                    x,
-                    y,
-                    alpha=config["model"]["focal_loss"]["alpha"],
-                    gamma=config["model"]["focal_loss"]["gamma"],
-                )
-
-            def focal_loss_eval(x, y):
-                return focal_loss_lgb_eval_error(
-                    x,
-                    y,
-                    alpha=config["model"]["focal_loss"]["alpha"],
-                    gamma=config["model"]["focal_loss"]["gamma"],
-                )
-
-            model = lgb.train(
-                params=lgb_model_params,
-                train_set=d_train,
-                valid_sets=valid_sets,
-                valid_names=valid_names,
-                # categorical_feature=categorical_cols,
-                callbacks=callbacks,
-                fobj=focal_loss,
-                feval=focal_loss_eval,
-                **lgb_train_params
-            )
-        else:
-            model = lgb.train(
-                params=lgb_model_params,
-                train_set=d_train,
-                valid_sets=valid_sets,
-                valid_names=valid_names,
-                # categorical_feature=categorical_cols,
-                callbacks=callbacks,
-                fobj=None,
-                **lgb_train_params
-            )
+        model = lgb.train(
+            params=lgb_model_params,
+            train_set=d_train,
+            valid_sets=valid_sets,
+            valid_names=valid_names,
+            # categorical_feature=categorical_cols,
+            callbacks=callbacks,
+            **lgb_train_params,
+        )
 
         best_score = dict(model.best_score)
         return model, best_score
@@ -134,10 +101,12 @@ class LightGBM(BaseModel):
     def predict(
         self, model: LGBMModel, features: Union[pd.DataFrame, np.ndarray]
     ) -> np.ndarray:
-        return model.predict(features)
+        return model.predict(features.to_pandas() if is_cudf(features) else features)
 
     def get_feature_importance(self, model: LGBMModel) -> np.ndarray:
-        return model.feature_importance(importance_type="gain")
+        return dict(
+            zip(model.feature_name(), model.feature_importance(importance_type="gain"))
+        )
 
 
 def log_evaluation_callback(period=1, show_stdv=True):

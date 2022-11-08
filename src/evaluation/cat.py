@@ -1,6 +1,6 @@
-import numpy as np
-
 from typing import Optional, Sequence, Tuple
+
+import numpy as np
 
 from .metrics import calc_metric
 from .optimization import OptimizedRounder, OptimizedRounderNotScaled
