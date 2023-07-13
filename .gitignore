@@ -112,7 +112,6 @@ venv.bak/
 *.dat
 *.h5
 catboost_info/
-notebooks/each_ids_time_series_images/
 *.pth
 
 # editor
