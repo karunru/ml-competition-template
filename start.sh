@@ -14,10 +14,8 @@ cp -r ../ml-competition-template/src ./
 cp ../ml-competition-template/main.py main.py
 cp ../ml-competition-template/seed_averaging.py seed_averaging.py
 cp ../ml-competition-template/make_seed_average_configs.py make_seed_average_configs.py
-cp ../ml-competition-template/.dockerignore .dockerignore
 cp ../ml-competition-template/.gitignore .gitignore
-cp ../ml-competition-template/Dockerfile Dockerfile
-cp ../ml-competition-template/docker-compose.yml docker-compose.yml
+cp ../ml-competition-template/pyproject.toml pyproject.toml
 
 # .gitkeep
 touch features/.gitkeep
@@ -33,3 +31,6 @@ mv .idea/ml-competition-template.iml .idea/"${project_name}.iml"
 sed -i -e "s/ml\-competition\-template/${project_name}/g" .idea/modules.xml
 sed -i -e "s/ml\-competition\-template/${project_name}/g" .idea/deployment.xml
 sed -i -e "s/ml\-competition\-template/${project_name}/g" .idea/remote-mappings.xml
+
+# poetry setting
+sed -i -e "s/ml\-competition\-template/${project_name}/g" pyproject.toml

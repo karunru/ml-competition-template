@@ -1,0 +1,77 @@
+[tool.poetry]
+name = "ml-competition-template"
+version = "0.1.0"
+description = "table data ml competition template"
+authors = ["hikaru yamashita <10268578+karunru@users.noreply.github.com>"]
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = "^3.9"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.1.0"
+isort = "^5.10.1"
+mdformat-gfm = "^0.3.5"
+mdformat-frontmatter = "^2.0.1"
+mdformat_footnote = "^0.1.1"
+flake8 = "^5.0.0"
+mypy = "^1.0.1"
+pytest-cov = "^4.0.0"
+ipython = "^8.14.0"
+jupyter = "^1.0.0"
+cudf-cu11 = { version="^23.06.0", source="rapids" }
+dask-cudf-cu11 = { version="^23.06", source="rapids" }
+cuml-cu11 = { version="^23.06", source="rapids" }
+ptxcompiler-cu11 = { version="^0.7", source="rapids" }
+cubinlinker-cu11 = { version="^0.3", source="rapids" }
+rmm-cu11 = { version="^23.06", source="rapids" }
+raft-dask-cu11 = { version="^23.06", source="rapids" }
+ucx-py-cu11 = { version="^0.32", source="rapids" }
+pylibraft-cu11 = { version="^23.06", source="rapids" }
+torch = { url="https://download.pytorch.org/whl/cu118/torch-2.0.1%2Bcu118-cp39-cp39-linux_x86_64.whl" }
+torchvision = { url="https://download.pytorch.org/whl/cu118/torchvision-0.15.2%2Bcu118-cp39-cp39-linux_x86_64.whl" }
+cupy-cuda12x = "^12.1.0"
+omegaconf = "^2.3.0"
+opencv-python = "^4.7.0.72"
+pytorch-lightning = "^2.0.4"
+segmentation-models-pytorch = "^0.3.3"
+torch-optimizer = "^0.3.0"
+pandarallel = "^1.6.5"
+imbalanced-learn = "^0.10.1"
+mlcrate = "^0.2.0"
+seaborn = "^0.12.2"
+matplotlib-venn = "^0.11.9"
+kaggle = "^1.5.14"
+gensim = "^4.3.1"
+nltk = "^3.8.1"
+transformers = "^4.30.2"
+sentencepiece = "^0.1.99"
+keras = "^2.13.1"
+ktboost = "^0.2.2"
+catboost = "^1.2"
+rgf-python = "^3.12.0"
+tsfresh = "^0.20.1"
+darts = "^0.24.0"
+nbdime = "^3.2.1"
+jupyter-black = "^0.3.4"
+nlplot = "^1.6.0"
+xgboost = "^1.7.6"
+polars = "^0.18.4"
+
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+
+[[tool.poetry.source]]
+name = "rapids"
+url = "https://pypi.nvidia.com"
+priority = "supplemental"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
