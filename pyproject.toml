@@ -30,8 +30,8 @@ rmm-cu11 = { version="^23.06", source="rapids" }
 raft-dask-cu11 = { version="^23.06", source="rapids" }
 ucx-py-cu11 = { version="^0.32", source="rapids" }
 pylibraft-cu11 = { version="^23.06", source="rapids" }
-torch = { url="https://download.pytorch.org/whl/cu118/torch-2.0.1%2Bcu118-cp39-cp39-linux_x86_64.whl" }
-torchvision = { url="https://download.pytorch.org/whl/cu118/torchvision-0.15.2%2Bcu118-cp39-cp39-linux_x86_64.whl" }
+torch = { version="^2.0", source="torch_cu118" }
+torchvision = { version="^0.15", source="torch_cu118" }
 cupy-cuda12x = "^12.1.0"
 omegaconf = "^2.3.0"
 opencv-python = "^4.7.0.72"
@@ -69,7 +69,13 @@ priority = "primary"
 [[tool.poetry.source]]
 name = "rapids"
 url = "https://pypi.nvidia.com"
-priority = "supplemental"
+priority = "explicit"
+
+
+[[tool.poetry.source]]
+name = "torch_cu118"
+url = "https://download.pytorch.org/whl/cu118"
+priority = "explicit"
 
 
 [build-system]
