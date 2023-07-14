@@ -59,6 +59,7 @@ jupyter-black = "^0.3.4"
 nlplot = "^1.6.0"
 xgboost = "^1.7.6"
 polars = "^0.18.4"
+xfeat  = { git = "https://github.com/karunru/xfeat.git", branch = "master" }
 
 
 [[tool.poetry.source]]
