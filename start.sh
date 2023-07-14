@@ -16,6 +16,7 @@ cp ../ml-competition-template/seed_averaging.py seed_averaging.py
 cp ../ml-competition-template/make_seed_average_configs.py make_seed_average_configs.py
 cp ../ml-competition-template/.gitignore .gitignore
 cp ../ml-competition-template/pyproject.toml pyproject.toml
+cp ../ml-competition-template/poetry.lock poetry.lock
 
 # .gitkeep
 touch features/.gitkeep
