@@ -4,11 +4,9 @@ from collections import defaultdict
 from typing import Optional, Tuple, Union
 
 import lightgbm as lgb
-import neptune.new as neptune
 import numpy as np
 import pandas as pd
 from lightgbm import Booster
-from neptune.new.integrations.lightgbm import NeptuneCallback
 from xfeat.types import XDataFrame, XSeries
 from xfeat.utils import is_cudf
 
@@ -29,23 +27,14 @@ class LightGBM(BaseModel):
         y_train: AoS,
         x_valid: AoD,
         y_valid: AoS,
-        neptune_runner: Optional[neptune.metadata_containers.run.Run],
         config: dict,
         **kwargs,
     ) -> Tuple[LGBMModel, dict]:
-
         callbacks = [
             log_evaluation_callback(
                 period=config["model"]["model_params"]["verbosity"]
             ),
         ]
-
-        neptune_callback = (
-            NeptuneCallback(run=neptune_runner, base_namespace=f"fold_{self.fold}")
-            if neptune_runner
-            else None
-        )
-        callbacks.append(neptune_callback)
 
         if "early_stopping_rounds" in config["model"]["model_params"].keys():
             callbacks += [

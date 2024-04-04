@@ -12,7 +12,7 @@ from .timer import timer
 
 def save_pickle(obj, file_path):
     with timer(f"save {file_path}"):
-        max_bytes = 2 ** 31 - 1
+        max_bytes = 2**31 - 1
         bytes_out = pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
         n_bytes = sys.getsizeof(bytes_out)
         with open(file_path, "wb") as f_out:
@@ -22,7 +22,7 @@ def save_pickle(obj, file_path):
 
 def load_pickle(file_path):
     with timer(f"load {file_path}"):
-        max_bytes = 2 ** 31 - 1
+        max_bytes = 2**31 - 1
         input_size = os.path.getsize(file_path)
         bytes_in = bytearray(0)
         with open(file_path, "rb") as f_in:

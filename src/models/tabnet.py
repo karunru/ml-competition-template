@@ -88,7 +88,6 @@ class TabNet(BaseModel):
         return 1
 
     def predict(self, model: TabNetModel, features: XDataFrame) -> np.ndarray:
-
         for col in features.select_dtypes(include="category").columns:
             features[col] = features[col].cat.add_categories("Unknown")
             features[col] = features[col].fillna("Unknown")

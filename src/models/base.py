@@ -8,11 +8,11 @@ import cudf
 import cuml
 import cupy
 import lightgbm as lgb
-import neptune.new as neptune
 import numpy as np
 import pandas as pd
 import torch.cuda
 from cuml.preprocessing.TargetEncoder import TargetEncoder
+from sklearn.metrics import f1_score
 from sklearn.preprocessing import MinMaxScaler, QuantileTransformer
 from src.evaluation import calc_metric
 from src.sampling import get_sampling
@@ -37,7 +37,6 @@ class BaseModel(object):
         y_valid: AoS,
         x_valid2: Optional[AoD],
         y_valid2: Optional[AoS],
-        neptune_runner: Optional[neptune.metadata_containers.run.Run],
         config: dict,
     ) -> Tuple[Model, dict]:
         raise NotImplementedError
@@ -142,7 +141,6 @@ class BaseModel(object):
     ) -> Tuple[
         np.ndarray, np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray]
     ]:
-
         _y_train = y_train
         _oof_preds = oof_preds
         _test_preds = test_preds
@@ -175,7 +173,6 @@ class BaseModel(object):
         feature_name: List[str],
         folds_ids: List[Tuple[np.ndarray, np.ndarray]],
         target_scaler: Optional[MinMaxScaler],
-        neptune_runner: Optional[neptune.metadata_containers.run.Run],
         config: dict,
         log: bool = True,
     ) -> Tuple[
@@ -252,7 +249,6 @@ class BaseModel(object):
                         y_trn,
                         x_val,
                         y_val,
-                        neptune_runner=neptune_runner,
                         config=config,
                     )
                     cv_score_list.append(best_score)
@@ -361,7 +357,6 @@ class BaseModel(object):
         folds_ids: List[Tuple[np.ndarray, np.ndarray]],
         pseudo_label_folds_ids: List[Tuple[np.ndarray, np.ndarray]],
         target_scaler: Optional[MinMaxScaler],
-        neptune_runner: Optional[neptune.metadata_containers.run.Run],
         config: dict,
         log: bool = True,
     ) -> Tuple[
@@ -486,7 +481,6 @@ class BaseModel(object):
                         y_trn,
                         x_val,
                         y_val,
-                        neptune_runner=neptune_runner,
                         config=config,
                     )
                     cv_score_list.append(best_score)
@@ -499,19 +493,16 @@ class BaseModel(object):
                 with timer("predict oof and test"):
                     # predict oof and test
                     oof_preds[val_idx] = self.predict(model, x_val).reshape(-1)
-                    test_preds += (
-                        self.predict(
-                            model,
-                            X_test[
-                                [
-                                    col
-                                    for col in X_test.columns
-                                    if col != config["val"]["params"]["id"]
-                                ]
-                            ],
-                        ).reshape(-1)
-                        / len(folds_ids)
-                    )
+                    test_preds += self.predict(
+                        model,
+                        X_test[
+                            [
+                                col
+                                for col in X_test.columns
+                                if col != config["val"]["params"]["id"]
+                            ]
+                        ],
+                    ).reshape(-1) / len(folds_ids)
 
                     if valid_exists:
                         valid_preds += self.predict(model, valid_features).reshape(

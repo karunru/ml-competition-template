@@ -42,7 +42,6 @@ def truncated_cv_with_adjustment_of_distribution(
     test_groups: np.ndarray,
     n_trials: int = 100,
 ) -> Dict[str, Union[List[float], float]]:
-
     eval_result: Dict[str, Union[List[float], float]] = {}
     trials: List[float] = []
 

@@ -18,7 +18,6 @@ class CategoryGroupVectorization(Feature):
         train_df: cudf.DataFrame,
         test_df: cudf.DataFrame,
     ):
-
         with timer("load data"):
             train = train_df.copy()
             train = train.sort_values("S_2")
@@ -210,6 +209,5 @@ class CategoryGroupVectorization(Feature):
             gc.collect()
 
         with timer("end"):
-
             self.train = self.train.sort_index().reset_index(drop=True)
             self.test = self.test.sort_index().reset_index(drop=True)

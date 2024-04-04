@@ -209,7 +209,7 @@ class CategoryVectorizer:
 
     def transform(self, dataframe: XDataFrame) -> XDataFrame:
         features = []
-        for (col1, col2) in tqdm(self.get_column_pairs()):
+        for col1, col2 in tqdm(self.get_column_pairs()):
             try:
                 sentence = self.create_word_list(dataframe, col1, col2)
                 sentence = self.vectorizer.fit_transform(sentence)
@@ -868,8 +868,7 @@ class BERTFeatureTransformer:
                         np.max(
                             model(
                                 texts[
-                                    i
-                                    * self.batch_size : min(
+                                    i * self.batch_size : min(
                                         len(texts), (i + 1) * self.batch_size
                                     )
                                 ]

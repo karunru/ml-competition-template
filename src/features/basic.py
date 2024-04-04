@@ -14,80 +14,226 @@ class Basic(Feature):
         train_df: cudf.DataFrame,
         test_df: cudf.DataFrame,
     ):
-
         with timer("load data"):
             train = train_df.copy()
             len_train = len(train)
             test = test_df.copy()
 
         with timer("concat train and test"):
-            total = cudf.concat([train, test], ignore_index=True)
-
-        with timer("label encoding"):
-            with timer("rating"):
-                rating_dict = {
-                    "RP": 0,
-                    "EC": 1,
-                    "K-A": 2,
-                    "E": 2,
-                    "E10+": 3,
-                    "T": 4,
-                    "M": 5,
-                    "AO": 5,
-                }
-                total["Rating"] = total["Rating"].replace(rating_dict).astype(int)
-
-            with timer("other cat cols"):
-                cat_cols = [
-                    "Name",
-                    "Platform",
-                    "Genre",
-                    "Publisher",
-                    "Developer",
-                ]
-                for col in cat_cols:
-                    le = LabelEncoder(handle_unknown="ignore")
-                    le.fit(total[col])
-                    total[col] = le.transform(total[col]).astype("category")
-
-        with timer("User_Score"):
-            total["User_Score"] = (
-                total["User_Score"]
-                .replace(to_replace="tbd", value=np.nan)
-                .astype(float)
+            total = cudf.concat([train, test], ignore_index=True).reset_index(
+                drop=False
             )
 
-        with timer("Year_of_Release"):
-            total["Year_of_Release"] = total["Year_of_Release"].replace(
-                to_replace=2020.0, value=2017.0
+        with timer("tou_name"):
+            total["tou_name"] = total["棟名"]
+
+            total["tou_name_is_nan"] = total["tou_name"].isna()
+
+            total["tou_name_contains_mon"] = (
+                total["tou_name"].str.contains("門").fillna(False)
+            )
+            total["tou_name_contains_den"] = (
+                total["tou_name"].str.contains("殿").fillna(False)
+            )
+            total["tou_name_contains_kura"] = (
+                total["tou_name"].str.contains("蔵").fillna(False)
+            )
+            total["tou_name_contains_dou"] = (
+                total["tou_name"].str.contains("堂").fillna(False)
+            )
+            total["tou_name_contains_ya"] = (
+                total["tou_name"].str.contains("屋").fillna(False)
             )
 
-        with timer("log_User_Count"):
-            total["log_User_Count"] = np.log1p(total["User_Count"].to_pandas())
+            count_enc = (
+                total["tou_name"].value_counts(dropna=False).to_frame("tou_name_count")
+            )
+            total = total.merge(count_enc, left_on="tou_name", right_index=True)
+
+            le = LabelEncoder(handle_unknown="ignore")
+            total["tou_name"] = le.fit_transform(total["tou_name"]).astype("category")
+
+        with timer("type"):
+            count_enc = total["種別2"].value_counts(dropna=False).to_frame("type_count")
+            total = total.merge(count_enc, left_on="種別2", right_index=True)
+
+            le = LabelEncoder(handle_unknown="ignore")
+            total["type"] = le.fit_transform(total["種別2"]).astype("category")
+
+        with timer("country"):
+            total["country"] = total["国"]
+
+            count_enc = (
+                total["country"].value_counts(dropna=False).to_frame("country_count")
+            )
+            total = total.merge(count_enc, left_on="country", right_index=True)
+
+            total["country_is_na"] = total["country"].isna()
+
+            total["country_contains_japan"] = (
+                total["country"].str.contains("日本").fillna(False)
+            )
+            total["country_contains_china"] = (
+                total["country"].str.contains("中国").fillna(False)
+            )
+            total["country_contains_korea"] = (
+                total["country"].str.contains("朝鮮").fillna(False)
+            )
+
+            le = LabelEncoder(handle_unknown="ignore")
+            total["country"] = le.fit_transform(total["country"]).astype("category")
+
+        with timer("era"):
+            total["era"] = total["時代"]
+
+            era = cudf.read_csv("./data/era.csv")
+            era = era.rename(
+                columns={"時代": "era", "開始": "start_year", "終了": "end_year"}
+            )
+
+            total["new_era"] = (
+                total["era"].str.replace(r".期", "").str.replace("時代", "")
+            )
+            total["start_era"] = (
+                total["new_era"]
+                .fillna("")
+                .to_pandas()
+                .apply(lambda x: x.split("～")[0])
+            )
+            total["end_era"] = (
+                total["new_era"]
+                .fillna("")
+                .to_pandas()
+                .apply(lambda x: x.split("～")[-1])
+            )
+
+            total = cudf.merge(
+                total,
+                era[["era", "start_year"]].set_index("era"),
+                how="left",
+                left_on="start_era",
+                right_index=True,
+            )
+            total = cudf.merge(
+                total,
+                era[["era", "end_year"]].set_index("era"),
+                how="left",
+                left_on="end_era",
+                right_index=True,
+            ).sort_values("index")
+
+            total["era_range"] = total["end_year"] - total["start_year"]
+
+            for col in ["era", "new_era", "start_era", "end_era"]:
+                count_enc = (
+                    total[col].value_counts(dropna=False).to_frame(f"{col}_count")
+                )
+                total = total.merge(count_enc, left_on=col, right_index=True)
+
+                le = LabelEncoder(handle_unknown="ignore")
+                total[col] = le.fit_transform(total[col]).astype("category")
+
+        with timer("prefecture"):
+            total["prefecture"] = total[
+                "都道府県 ※美工品は「所有者住所（所在都道府県）」"
+            ]
+
+            total["owner_prefecture"] = (
+                total["prefecture"]
+                .fillna("")
+                .to_pandas()
+                .apply(lambda x: x.split("（")[0])
+            )
+            total["location_prefecture"] = (
+                total["prefecture"]
+                .fillna("")
+                .str.replace("）", "")
+                .to_pandas()
+                .apply(lambda x: x.split("（")[-1])
+            )
+            total["owner_and_location_is_same"] = (
+                total["owner_prefecture"] == total["location_prefecture"]
+            )
+
+            total["owner_is_tokyo"] = total["owner_prefecture"] == "東京都"
+            total["owner_is_kyoto"] = total["owner_prefecture"] == "京都府"
+            total["owner_is_none"] = total["owner_prefecture"] == ""
+            total["owner_is_tokyo_or_kyoto"] = (
+                total["owner_is_tokyo"].astype(int)
+                + total["owner_is_kyoto"].astype(int)
+            ) > 1
+
+            total["location_is_tokyo"] = total["location_prefecture"] == "東京都"
+            total["location_is_kyoto"] = total["location_prefecture"] == "京都府"
+            total["location_is_none"] = total["location_prefecture"] == ""
+            total["location_is_tokyo_or_kyoto"] = (
+                total["location_is_tokyo"].astype(int)
+                + total["location_is_kyoto"].astype(int)
+            ) > 1
+
+            for col in ["prefecture", "owner_prefecture", "location_prefecture"]:
+                count_enc = (
+                    total[col].value_counts(dropna=False).to_frame(f"{col}_count")
+                )
+                total = total.merge(count_enc, left_on=col, right_index=True)
+
+                le = LabelEncoder(handle_unknown="ignore")
+                total[col] = le.fit_transform(total[col]).astype("category")
+
+        with timer("storage facility name"):
+            total["storage_facility_name"] = total["保管施設の名称"]
+            total["storage_facility_is_art_museum"] = (
+                total["storage_facility_name"].str.contains("美術館").fillna(False)
+            )
+            total["storage_facility_is_museum"] = (
+                total["storage_facility_name"].str.contains("博物館").fillna(False)
+            )
+            total["storage_facility_is_university"] = (
+                total["storage_facility_name"].str.contains("大学").fillna(False)
+            )
+            total["storage_facility_is_national"] = (
+                total["storage_facility_name"].str.contains("国立").fillna(False)
+            )
+
+            for col in ["storage_facility_name"]:
+                count_enc = (
+                    total[col].value_counts(dropna=False).to_frame(f"{col}_count")
+                )
+                total = total.merge(count_enc, left_on=col, right_index=True)
+
+                le = LabelEncoder(handle_unknown="ignore")
+                total[col] = le.fit_transform(total[col]).astype("category")
+
+        with timer("owner name"):
+            total["owner_name"] = total["所有者名"]
+
+            for col in ["owner_name"]:
+                count_enc = (
+                    total[col].value_counts(dropna=False).to_frame(f"{col}_count")
+                )
+                total = total.merge(count_enc, left_on=col, right_index=True)
+
+                le = LabelEncoder(handle_unknown="ignore")
+                total[col] = le.fit_transform(total[col]).astype("category")
+
+        with timer("maintainer"):
+            total["maintainer"] = total["管理団体又は責任者"]
+
+            for col in ["maintainer"]:
+                count_enc = (
+                    total[col].value_counts(dropna=False).to_frame(f"{col}_count")
+                )
+                total = total.merge(count_enc, left_on=col, right_index=True)
+
+                le = LabelEncoder(handle_unknown="ignore")
+                total[col] = le.fit_transform(total[col]).astype("category")
+
+        with timer("lat lon"):
+            total["latitude"] = total["緯度"].replace(0.0, np.nan)
+            total["longitude"] = total["経度"].replace(0.0, np.nan)
 
         with timer("end"):
-            basic_cols = [
-                "Name",
-                "Platform",
-                "Year_of_Release",
-                "Genre",
-                "Publisher",
-                "Critic_Score",
-                "Critic_Count",
-                "User_Score",
-                "User_Count",
-                "log_User_Count",
-                "Developer",
-                "Rating",
-            ]
-            target_cols = [
-                "NA_Sales",
-                "EU_Sales",
-                "JP_Sales",
-                "Other_Sales",
-                "Global_Sales",
-            ]
-            self.train = (
-                total[basic_cols + target_cols].iloc[:len_train].reset_index(drop=True)
-            )
-            self.test = total[basic_cols].iloc[len_train:].reset_index(drop=True)
+            new_cols = [col for col in total.columns if col not in train.columns.tolist() + ["index"]]
+            total = total.sort_values("index")
+            self.train = total[new_cols].iloc[:len_train].reset_index(drop=True)
+            self.test = total[new_cols].iloc[len_train:].reset_index(drop=True)

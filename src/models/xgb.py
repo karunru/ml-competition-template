@@ -1,14 +1,11 @@
 from typing import Optional, Tuple, Union
 
 import cudf
-import neptune.new as neptune
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from neptune.new.integrations.xgboost import NeptuneCallback
 from xfeat.types import XDataFrame, XSeries
 
-from ..evaluation import xgb_amex
 from .base import BaseModel
 
 XGBModel = Union[xgb.XGBClassifier, xgb.XGBRegressor]
@@ -52,7 +49,6 @@ class XGBoost(BaseModel):
         y_train: AoS,
         x_valid: AoD,
         y_valid: AoS,
-        neptune_runner: Optional[neptune.metadata_containers.run.Run],
         config: dict,
         **kwargs,
     ) -> Tuple[XGBModel, dict]:
@@ -70,22 +66,16 @@ class XGBoost(BaseModel):
 
         Xy_train = IterLoadForDMatrix(x_train, y_train)
 
-        dtrain = xgb.DeviceQuantileDMatrix(Xy_train, max_bin=512)
-        dvalid = xgb.DMatrix(data=x_valid, label=y_valid)
+        dtrain = xgb.DMatrix(data=x_train, label=y_train, enable_categorical=True)
+        dvalid = xgb.DMatrix(data=x_valid, label=y_valid, enable_categorical=True)
 
-        neptune_callback = (
-            NeptuneCallback(run=neptune_runner, base_namespace=f"fold_{self.fold}")
-            if neptune_runner
-            else None
-        )
-        callbacks = [neptune_callback] if neptune_callback else None
+        callbacks = None
 
         # TRAIN MODEL FOLD K
         model = xgb.train(
             model_params,
             dtrain=dtrain,
             evals=[(dtrain, "train"), (dvalid, "valid")],
-            feval=xgb_amex,
             maximize=True,
             callbacks=callbacks,
             **train_params,
@@ -103,9 +93,9 @@ class XGBoost(BaseModel):
         for col in features.select_dtypes(include="category").columns:
             features[col] = features[col].cat.codes
 
-        return model.predict(
-            xgb.DMatrix(data=features), ntree_limit=model.best_ntree_limit
-        )
+        return pd.Series(model.predict(
+            xgb.DMatrix(data=features)
+        )).rank(pct=True).to_numpy()
 
     def get_feature_importance(self, model: XGBModel) -> np.ndarray:
-        return model.get_score(importance_type="weight")
+        return model.get_score(importance_type="gain")

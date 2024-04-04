@@ -1,68 +1,77 @@
 seed_everything: &seed 1031
 
+root: others
+
 dataset:
-  dir: "input"
-  feature_dir: "features"
+  dir: data
+  feature_dir: features
   params:
 
 features:
+  - Target
   - Basic
 
-target: "AverageLandPrice"
+categorical_cols: []
 
-remove_cols:
-  - "session_id"
-  - "n_add_item"
+target: is_kokuhou
 
-
-feature_selection:
-  SpearmanCorrelation:
-    dryrun: True
-  top_k:
-    do: False
-    importance: "034_seed_average_033"
-    top_k: 0.1
+target_encoding: False
 
 pre_process:
   do: False
-  col: ""
+  col: Area
   xentropy: False
 
 post_process:
   do: False
-  col: ""
+  col: Area
+
+stacking:
+  do: False
+  use_org_cols: True
+  predictions: []
 
 model:
-  name: "xgb"
-  mode: "regression"
+  name: xgb
+  mode: classification
 
   model_params:
-    objective: "reg:squarederror"
-    booster: "gbtree"
-    eval_metric: "rmse"
-    tree_method: "gpu_hist"
-    max_depth: 6
-    learning_rate: 0.01
+    objective: binary:logistic
+    booster: gbtree
+    eval_metric: auc
+    tree_method: gpu_hist
+    max_depth: 4
+    max_leaves: 128
+    learning_rate: 0.0001
     n_estimators: 10000
-    min_child_weight: 1.0
-    gamma: 0.0
+    min_child_weight: 110
+    gamma: 0.1
     colsample_bytree: 0.7
-    colsample_bylevel: 0.3
-    reg_alpha: 0.0
-    reg_lambda: 1.0
+    colsample_bylevel: 0.8
+    reg_alpha: 0.1
+    reg_lambda: 0.1
     verbosity: 0
     seed: *seed
     random_state: *seed
 
   train_params:
-    early_stopping_rounds: 200
-    verbose: True
+    num_boost_round: 10000
+    early_stopping_rounds: 1000
 
 val:
-  name: "group_kfold"
+  name: stratified_kfold
   params:
-    group: "PlaceID"
     n_splits: 5
+    id: index
+    target: is_kokuhou
     random_state: *seed
+    force_recreate: False
 
-output_dir: "output"
+train_folds:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+
+output_dir: output

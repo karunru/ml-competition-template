@@ -31,7 +31,6 @@ from xfeat.utils import is_cudf
 def select_top_k_features(
     config: dict,
 ) -> List[str]:
-
     top_k = config.get("top_k")
     importances_path = Path("./output") / config.get("importance") / "output.json"
     with open(importances_path) as f:

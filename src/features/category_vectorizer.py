@@ -3,7 +3,7 @@ import gc
 import cudf
 from cuml import TruncatedSVD
 from cuml.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from src.features.amex_radder_denoise import radder_denoise
+# from src.features.amex_radder_denoise import radder_denoise
 from src.features.base import Feature
 from src.features.modules import CategoryUser2Vec
 from src.utils import timer
@@ -16,7 +16,6 @@ class CategoryVectorization(Feature):
         train_df: cudf.DataFrame,
         test_df: cudf.DataFrame,
     ):
-
         with timer("load data"):
             train = train_df.copy()
             train = train.sort_values("S_2")
@@ -29,9 +28,9 @@ class CategoryVectorization(Feature):
                 "customer_ID"
             )
 
-        with timer("denoise"):
-            train = radder_denoise(train)
-            test = radder_denoise(test)
+        # with timer("denoise"):
+        #     train = radder_denoise(train)
+        #     test = radder_denoise(test)
 
         with timer("concat train and test"):
             total = cudf.concat([train, test], ignore_index=True).reset_index(drop=True)
@@ -264,6 +263,5 @@ class CategoryVectorization(Feature):
         #     gc.collect()
 
         with timer("end"):
-
             self.train = self.train.sort_index().reset_index(drop=True)
             self.test = self.test.sort_index().reset_index(drop=True)

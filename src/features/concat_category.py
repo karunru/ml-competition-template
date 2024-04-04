@@ -20,7 +20,6 @@ class ConcatCategory(Feature):
         train_df: pd.DataFrame,
         test_df: pd.DataFrame,
     ):
-
         with timer("load data"):
             train = train_df.copy()
             len_train = len(train)

@@ -12,12 +12,12 @@ import cudf
 import cupy as cp
 import lightgbm as lgb
 import matplotlib.pyplot as plt
-import neptune.new as neptune
 import numpy as np
 import pandas as pd
 import rmm
 import seaborn as sns
 import torch.cuda
+import wandb
 from pandarallel import pandarallel
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold
@@ -86,11 +86,8 @@ if __name__ == "__main__":
 
     is_not_all_data = "Target" in config["features"]
 
-    run = neptune.init(
-        project="karunru/amex-default-prediction"
-        if is_not_all_data
-        else "karunru/amex-default-prediction-all-data",
-        api_token=os.environ["NEPTUNE_API_TOKEN"],
+    wandb.init(
+        project="yukiCup-2023-autumn",
     )
 
     seed_everything(config["seed_everything"])
@@ -151,9 +148,13 @@ if __name__ == "__main__":
         categorical_cols = (
             config["categorical_cols"]
             + x_train.select_dtypes("category").columns.tolist()
+            + x_train.select_dtypes(bool).columns.tolist()
         )
-        x_train = x_train.to_pandas()
-        x_test = x_test.to_pandas()
+        config["categorical_cols"] = categorical_cols
+        x_train[x_train.select_dtypes(bool).columns] = x_train[x_train.select_dtypes(bool).columns].astype(np.int8)
+        x_test[x_test.select_dtypes(bool).columns] = x_train[x_test.select_dtypes(bool).columns].astype(np.int8)
+        # x_train = x_train.to_pandas()
+        # x_test = x_test.to_pandas()
 
     with timer("delete duplicated columns"):
         x_train = delete_duplicated_columns(x_train)
@@ -190,109 +191,103 @@ if __name__ == "__main__":
     # ===============================
     # === Feature Selection
     # ===============================
-    with timer("Feature Selection"):
-        if not config["stacking"]["do"]:
-            if config["feature_selection"]["top_k"]["do"]:
-                use_cols = select_top_k_features(config["feature_selection"]["top_k"])
-                use_cols = [col for col in use_cols if "_TE" not in col] + [
-                    config["val"]["params"]["id"]
-                ]
-                x_train, x_test = x_train[use_cols], x_test[use_cols]
-            else:
-                with timer("Feature Selection by ConstantFeatureEliminator"):
-                    selector = KarunruConstantFeatureEliminator()
-                    x_train = selector.fit_transform(x_train)
-                    x_test = selector.transform(x_test)
-                    assert len(x_train.columns) == len(x_test.columns)
-                    logging.info(
-                        f"Removed features : {set(cols) - set(x_train.columns)}"
-                    )
-                    print(f"Removed features : {set(cols) - set(x_train.columns)}")
-                    cols = x_train.columns.tolist()
-                    gc.collect()
-                    torch.cuda.empty_cache()
-
-                with timer("Feature Selection by Null Importance"):
-                    if config["feature_selection"]["NullImportance"]["do"]:
-                        selector = NullImportanceFeatureEliminator(
-                            path=config["feature_selection"]["NullImportance"]["path"],
-                            not_remove_cols=config["feature_selection"][
-                                "not_remove_cols"
-                            ],
-                        )
-                        x_train = selector.fit_transform(x_train)
-                        x_test = selector.transform(x_test)
-                        assert len(x_train.columns) == len(x_test.columns)
-                        logging.info(
-                            f"Removed features : {set(cols) - set(x_train.columns)}"
-                        )
-                    print(f"Removed features : {set(cols) - set(x_train.columns)}")
-                    cols = x_train.columns.tolist()
-                    gc.collect()
-                    torch.cuda.empty_cache()
-
-                with timer("Feature Selection by SpearmanCorrelationEliminator"):
-                    if config["feature_selection"]["SpearmanCorrelation"]["do"]:
-                        selector = KarunruSpearmanCorrelationEliminator(
-                            threshold=config["feature_selection"][
-                                "SpearmanCorrelation"
-                            ]["threshold"],
-                            dry_run=config["feature_selection"]["SpearmanCorrelation"][
-                                "dryrun"
-                            ],
-                            not_remove_cols=config["feature_selection"][
-                                "not_remove_cols"
-                            ]
-                            if config["feature_selection"]["not_remove_cols"][0] != ""
-                            else [],
-                        )
-                        x_train = selector.fit_transform(x_train)
-                        x_test = selector.transform(x_test)
-                        assert len(x_train.columns) == len(x_test.columns)
-                        logging.info(
-                            f"Removed features : {set(cols) - set(x_train.columns)}"
-                        )
-                        print(f"Removed features : {set(cols) - set(x_train.columns)}")
-                        cols = x_train.columns.tolist()
-                        gc.collect()
-                        torch.cuda.empty_cache()
-
-                with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
-                    if config["feature_selection"]["Kolmogorov-Smirnov"]["do"]:
-                        number_cols = (
-                            x_train[cols].select_dtypes(include="number").columns
-                        )
-                        to_remove = remove_ks_features(
-                            x_train[number_cols].to_pandas(),
-                            x_test[number_cols].to_pandas(),
-                            number_cols,
-                        )
-                        logging.info(f"Removed features : {to_remove}")
-                        print(f"Removed features : {to_remove}")
-                        cols = [col for col in cols if col not in to_remove]
-                        gc.collect()
-                        torch.cuda.empty_cache()
-
-        cols = x_train.columns.tolist()
-        categorical_cols = [col for col in categorical_cols if col in cols]
-        config["categorical_cols"] = categorical_cols
-        logging.info(f"categorical_cols : {config['categorical_cols']}")
-        print(f"categorical_cols : {config['categorical_cols']}")
-
+#     with timer("Feature Selection"):
+#         if not config["stacking"]["do"]:
+#             if config["feature_selection"]["top_k"]["do"]:
+#                 use_cols = select_top_k_features(config["feature_selection"]["top_k"])
+#                 use_cols = [col for col in use_cols if "_TE" not in col] + [
+#                     config["val"]["params"]["id"]
+#                 ]
+#                 x_train, x_test = x_train[use_cols], x_test[use_cols]
+#             else:
+#                 with timer("Feature Selection by ConstantFeatureEliminator"):
+#                     selector = KarunruConstantFeatureEliminator()
+#                     x_train = selector.fit_transform(x_train)
+#                     x_test = selector.transform(x_test)
+#                     assert len(x_train.columns) == len(x_test.columns)
+#                     logging.info(
+#                         f"Removed features : {set(cols) - set(x_train.columns)}"
+#                     )
+#                     print(f"Removed features : {set(cols) - set(x_train.columns)}")
+#                     cols = x_train.columns.tolist()
+#                     gc.collect()
+#                     torch.cuda.empty_cache()
+#
+#                 with timer("Feature Selection by Null Importance"):
+#                     if config["feature_selection"]["NullImportance"]["do"]:
+#                         selector = NullImportanceFeatureEliminator(
+#                             path=config["feature_selection"]["NullImportance"]["path"],
+#                             not_remove_cols=config["feature_selection"][
+#                                 "not_remove_cols"
+#                             ],
+#                         )
+#                         x_train = selector.fit_transform(x_train)
+#                         x_test = selector.transform(x_test)
+#                         assert len(x_train.columns) == len(x_test.columns)
+#                         logging.info(
+#                             f"Removed features : {set(cols) - set(x_train.columns)}"
+#                         )
+#                     print(f"Removed features : {set(cols) - set(x_train.columns)}")
+#                     cols = x_train.columns.tolist()
+#                     gc.collect()
+#                     torch.cuda.empty_cache()
+#
+#                 with timer("Feature Selection by SpearmanCorrelationEliminator"):
+#                     if config["feature_selection"]["SpearmanCorrelation"]["do"]:
+#                         selector = KarunruSpearmanCorrelationEliminator(
+#                             threshold=config["feature_selection"][
+#                                 "SpearmanCorrelation"
+#                             ]["threshold"],
+#                             dry_run=config["feature_selection"]["SpearmanCorrelation"][
+#                                 "dryrun"
+#                             ],
+#                             not_remove_cols=config["feature_selection"][
+#                                 "not_remove_cols"
+#                             ]
+#                             if config["feature_selection"]["not_remove_cols"][0] != ""
+#                             else [],
+#                         )
+#                         x_train = selector.fit_transform(x_train)
+#                         x_test = selector.transform(x_test)
+#                         assert len(x_train.columns) == len(x_test.columns)
+#                         logging.info(
+#                             f"Removed features : {set(cols) - set(x_train.columns)}"
+#                         )
+#                         print(f"Removed features : {set(cols) - set(x_train.columns)}")
+#                         cols = x_train.columns.tolist()
+#                         gc.collect()
+#                         torch.cuda.empty_cache()
+#
+#                 with timer("Feature Selection with Kolmogorov-Smirnov statistic"):
+#                     if config["feature_selection"]["Kolmogorov-Smirnov"]["do"]:
+#                         number_cols = (
+#                             x_train[cols].select_dtypes(include="number").columns
+#                         )
+#                         to_remove = remove_ks_features(
+#                             x_train[number_cols].to_pandas(),
+#                             x_test[number_cols].to_pandas(),
+#                             number_cols,
+#                         )
+#                         logging.info(f"Removed features : {to_remove}")
+#                         print(f"Removed features : {to_remove}")
+#                         cols = [col for col in cols if col not in to_remove]
+#                         gc.collect()
+#                         torch.cuda.empty_cache()
+#
+#         cols = x_train.columns.tolist()
+#         categorical_cols = [col for col in categorical_cols if col in cols]
+#         config["categorical_cols"] = categorical_cols
+#         logging.info(f"categorical_cols : {config['categorical_cols']}")
+#         print(f"categorical_cols : {config['categorical_cols']}")
+#
     logging.info("Train model")
 
     # get folds
     with timer("Train model"):
-        run["config"] = config
         with timer("get validation"):
-            x_train["binned_target"] = pd.qcut(
-                y_train,
-                q=[0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0],
-                labels=False,
-                duplicates="drop",
-            )
+            x_train[config["target"]] = y_train
             splits = get_validation(x_train, config)
-            del x_train["binned_target"]
+            del x_train[config["target"]]
             gc.collect()
 
         model = get_model(config)
@@ -312,7 +307,6 @@ if __name__ == "__main__":
             feature_name=cols,
             folds_ids=splits,
             target_scaler=None,
-            neptune_runner=run,
             config=config,
         )
 
@@ -332,7 +326,6 @@ if __name__ == "__main__":
         config["eval_results"][k] = v
     save_path = output_dir / "output.json"
     save_json(config, save_path)
-    run["config"] = config
 
     plot_feature_importance(feature_importance, output_dir / "feature_importance.png")
 

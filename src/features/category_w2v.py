@@ -18,7 +18,6 @@ class CategoryW2VVectorization(Feature):
         train_df: cudf.DataFrame,
         test_df: cudf.DataFrame,
     ):
-
         with timer("load data"):
             train = train_df.copy()
             train = train.sort_values("S_2")

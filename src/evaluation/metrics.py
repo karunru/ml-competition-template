@@ -1,7 +1,7 @@
 from typing import Union
 
 import numpy as np
-from sklearn.metrics import average_precision_score, mean_squared_error
+from sklearn.metrics import average_precision_score, mean_squared_error, roc_auc_score, f1_score
 
 
 def pr_auc(y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]) -> float:
@@ -44,7 +44,7 @@ def qwk(
 def calc_metric(
     y_true: Union[np.ndarray, list], y_pred: Union[np.ndarray, list]
 ) -> float:
-    return rmsle(y_true, y_pred)
+    return f1_score(y_true.get(), y_pred)
 
 
 if __name__ == "__main__":

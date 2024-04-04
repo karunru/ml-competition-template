@@ -11,11 +11,11 @@ from xfeat.utils import compress_df
 def reduce_mem_usage(
     df: XDataFrame, verbose: bool = True, debug: bool = True
 ) -> XDataFrame:
-    start_mem = df.memory_usage().sum() / 1024 ** 2
+    start_mem = df.memory_usage().sum() / 1024**2
 
     df = compress_df(df)
 
-    end_mem = df.memory_usage().sum() / 1024 ** 2
+    end_mem = df.memory_usage().sum() / 1024**2
     reduction = (start_mem - end_mem) / start_mem
 
     msg = (

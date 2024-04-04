@@ -4,7 +4,7 @@ import random
 from collections import Counter, defaultdict
 from typing import List, Tuple, Union
 
-# import cudf
+import cudf
 import numpy as np
 import pandas as pd
 from omegaconf import DictConfig, ListConfig
@@ -20,7 +20,7 @@ def validation_refinement_by_day_of_week(
 
     split_refinement_by_day_of_week = []
 
-    for (trn_idx, val_idx) in splits:
+    for trn_idx, val_idx in splits:
         val_days = df.loc[val_idx, "date"].unique()
         val_first_day = val_days[pred_day - 1]
         val_wday = df.query("date == @val_first_day")["wday"].iloc[0]
